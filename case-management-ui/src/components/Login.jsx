@@ -7,13 +7,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [localError, setLocalError] = useState("");
 
-  const handleSubmit = (event) => {
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setSubmitted(true);
     setLocalError("");
 
     if (!email.trim()) {
@@ -27,7 +24,6 @@ export default function Login() {
       setLocalError(
         err.message || "Failed to sign in. Please verify your email."
       );
-      setLocalError(err.message || "Failed to sign in. Please verify your email.");
     }
   };
 
@@ -44,32 +40,24 @@ export default function Login() {
       <section className="login__brand" aria-label="Case management overview">
         <div className="login__brand-content">
           <a className="login__wordmark" href="/" aria-label="Casework home">
-            <span className="login__mark" aria-hidden="true">C</span>
             <span className="login__mark" aria-hidden="true">
               C
             </span>
             <span>Casework</span>
           </a>
           <div className="login__intro">
-            <p className="login__eyebrow">Case management, considered</p>
-            <p className="login__eyebrow">Enterprise Case Management</p>
-            <h1>Every case.<br />A clearer path forward.</h1>
             <p className="login__eyebrow">Enterprise Case Management</p>
             <h1>
               Every case.
               <br />A clearer path forward.
             </h1>
             <p className="login__description">
-              The secure workspace for teams moving important work from intake to resolution.
               The secure workspace for teams moving important work from intake
               to resolution. Group-scoped authorization powered by Camunda
               workflows.
-              Group-scoped authorization powered by Camunda workflows.
             </p>
           </div>
           <div className="login__assurance">
-            <span className="login__assurance-icon" aria-hidden="true">✓</span>
-            <span>Protected by enterprise-grade security</span>
             <span className="login__assurance-icon" aria-hidden="true">
               ✓
             </span>
@@ -85,7 +73,6 @@ export default function Login() {
           <div className="login__heading">
             <p className="login__kicker">Welcome back</p>
             <h2 id="login-title">Sign in to your workspace</h2>
-            <p>Enter your details to continue managing your cases.</p>
             <p>Enter your email to authenticate with your assigned group.</p>
           </div>
 
@@ -99,7 +86,6 @@ export default function Login() {
 
             <div className="login__field">
               <label htmlFor="email">Email address</label>
-              <input id="email" name="email" type="email" autoComplete="email" placeholder="you@company.com" required autoFocus />
               <input
                 id="email"
                 name="email"
@@ -116,12 +102,9 @@ export default function Login() {
             <div className="login__field">
               <div className="login__label-row">
                 <label htmlFor="password">Password</label>
-                <a href="#reset-password">Forgot password?</a>
                 <span className="login__hint-label">(pass-through)</span>
               </div>
               <div className="login__password-wrap">
-                <input id="password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="Enter your password" required />
-                <button className="login__password-toggle" type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"}>
                 <input
                   id="password"
                   name="password"
@@ -144,7 +127,6 @@ export default function Login() {
             </div>
 
             <label className="login__checkbox">
-              <input type="checkbox" name="remember" />
               <input
                 type="checkbox"
                 name="remember"
@@ -153,15 +135,8 @@ export default function Login() {
               />
               <span>Keep me signed in</span>
             </label>
-            <button className="login__submit" type="submit">Sign in <span aria-hidden="true">→</span></button>
-            {submitted && <p className="login__message" role="status">Your credentials are ready to be securely verified.</p>}
 
             <button className="login__submit" type="submit" disabled={loading}>
-            <button
-              className="login__submit"
-              type="submit"
-              disabled={loading}
-            >
               {loading ? (
                 <>
                   <span className="login__spinner" aria-hidden="true" />
@@ -176,7 +151,6 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="login__support">Need help accessing your account? <a href="mailto:support@example.com">Contact support</a></p>
           <div className="login__quick-fill">
             <span className="login__quick-title">Quick demo credentials:</span>
             <div className="login__quick-buttons">
@@ -200,7 +174,6 @@ export default function Login() {
           <p className="login__support">
             Need help accessing your account?{" "}
             <a href="mailto:support@example.com">Contact support</a>
-            Need help accessing your account? <a href="mailto:support@example.com">Contact support</a>
           </p>
         </div>
       </section>

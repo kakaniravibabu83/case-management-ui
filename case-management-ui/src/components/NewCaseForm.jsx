@@ -34,7 +34,7 @@ export default function NewCaseForm({ onCaseCreated }) {
       const result = await createCase({
         title: trimmedTitle,
         description: description.trim(),
-        status: "Open",
+        status: "Open"
       });
 
       setCreatedCase(result);
@@ -67,17 +67,13 @@ export default function NewCaseForm({ onCaseCreated }) {
 
       {createdCase ? (
         <div className="new-case-success" role="status">
-          <div className="new-case-success__icon" aria-hidden="true">✓</div>
+          <div className="new-case-success__icon" aria-hidden="true">
+            ✓
+          </div>
           <div className="new-case-success__content">
             <h2 className="new-case-success__title">
               Case Number #{createdCase.caseNumber || createdCase.id} is created
             </h2>
-            <p className="new-case-success__desc">
-              The case has been opened with status <strong>Open</strong>.
-              {createdCase.camundaProcessInstanceId && (
-                <span> Process Instance: <code>{createdCase.camundaProcessInstanceId}</code>.</span>
-              )}
-            </p>
             <div className="new-case-success__actions">
               <button
                 type="button"
@@ -103,7 +99,9 @@ export default function NewCaseForm({ onCaseCreated }) {
               <label htmlFor="case-title">
                 Case Title <span className="new-case-form__required">*</span>
               </label>
-              <span className="new-case-form__char-count">{title.length}/200</span>
+              <span className="new-case-form__char-count">
+                {title.length}/200
+              </span>
             </div>
             <input
               id="case-title"
@@ -121,7 +119,9 @@ export default function NewCaseForm({ onCaseCreated }) {
           <div className="new-case-form__field">
             <div className="new-case-form__label-row">
               <label htmlFor="case-description">Description</label>
-              <span className="new-case-form__char-count">{description.length}/2000</span>
+              <span className="new-case-form__char-count">
+                {description.length}/2000
+              </span>
             </div>
             <textarea
               id="case-description"
@@ -156,4 +156,3 @@ export default function NewCaseForm({ onCaseCreated }) {
     </div>
   );
 }
-

@@ -14,11 +14,9 @@ export class ApiError extends Error {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${BASE}${path}`, {
   const url = path.startsWith("/api") ? path : `${BASE}${path}`;
   const response = await fetch(url, {
     headers: { "Content-Type": "application/json" },
-    ...options,
     ...options
   });
 
@@ -47,7 +45,6 @@ export const DEMO_GROUPS = [
       id: 1,
       name: "ROLE_BK_OFFICER",
       description: "Back officer can create a new case."
-      description: "Back officer can create a new case.",
     },
     members: [
       {
@@ -55,7 +52,6 @@ export const DEMO_GROUPS = [
         firstName: "Jane",
         lastName: "Doe",
         email: "jane.doe@example.com"
-        email: "jane.doe@example.com",
       },
       {
         id: 2,
@@ -64,9 +60,6 @@ export const DEMO_GROUPS = [
         email: "ravi@example.com"
       }
     ]
-        email: "ravi@example.com",
-      },
-    ],
   },
   {
     id: 2,
@@ -76,7 +69,6 @@ export const DEMO_GROUPS = [
       id: 2,
       name: "ROLE_SAM",
       description: "SAM Member can work on cases."
-      description: "SAM Member can work on cases.",
     },
     members: [
       {
@@ -84,7 +76,6 @@ export const DEMO_GROUPS = [
         firstName: "Sam",
         lastName: "Reviewer",
         email: "sam@example.com"
-        email: "sam@example.com",
       },
       {
         id: 4,
@@ -94,10 +85,6 @@ export const DEMO_GROUPS = [
       }
     ]
   }
-        email: "alex.sam@example.com",
-      },
-    ],
-  },
 ];
 
 /** Lists all groups with their roles and members from GET /api/groups. */
@@ -119,13 +106,10 @@ export async function authenticateWithGroups(email) {
   try {
     groups = await getGroups();
   } catch (err) {
-    // If backend is unreachable (e.g. 502 Bad Gateway from Vite proxy or network error),
-    // we also check if the user entered one of the demo users and allow graceful preview.
     console.warn(
       "Could not reach backend /api/groups, checking demo fallback:",
       err
     );
-    console.warn("Could not reach backend /api/groups, checking demo fallback:", err);
     const demoFound = findUserInGroups(DEMO_GROUPS, normalizedEmail);
     if (demoFound) {
       return { ...demoFound, isDemo: true };
@@ -136,7 +120,6 @@ export async function authenticateWithGroups(email) {
   }
 
   if (!Array.isArray(groups) || groups.length === 0) {
-    // Also check demo fallback if backend returns empty list
     const demoFound = findUserInGroups(DEMO_GROUPS, normalizedEmail);
     if (demoFound) {
       return { ...demoFound, isDemo: true };
@@ -149,7 +132,6 @@ export async function authenticateWithGroups(email) {
     throw new Error(
       "Access denied: Email is not associated with any authorized group."
     );
-    throw new Error("Access denied: Email is not associated with any authorized group.");
   }
 
   return result;
@@ -186,7 +168,6 @@ function findUserInGroups(groups, normalizedEmail) {
       id: primaryGroup.id,
       name: primaryGroup.name,
       description: primaryGroup.description
-      description: primaryGroup.description,
     },
     role: primaryGroup.role || null,
     allGroups: matchingGroups.map((g) => ({
@@ -195,8 +176,6 @@ function findUserInGroups(groups, normalizedEmail) {
       description: g.description,
       role: g.role
     }))
-      role: g.role,
-    })),
   };
 }
 
@@ -205,16 +184,19 @@ export async function createCase({ title, description, status = "Open" }) {
   const payload = {
     title: (title || "").trim(),
     description: (description || "").trim(),
-    status: status || "Open",
+    status: status || "Open"
   };
 
   try {
     return await request("/api/cases", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
   } catch (err) {
-    console.warn("Could not reach POST /api/cases on backend, using fallback:", err);
+    console.warn(
+      "Could not reach POST /api/cases on backend, using fallback:",
+      err
+    );
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const demoCaseNumber = `CASE-${new Date().getFullYear()}-${randomSuffix}`;
     return {
@@ -225,7 +207,7 @@ export async function createCase({ title, description, status = "Open" }) {
       status: "Open",
       camundaProcessInstanceId: `demo-pi-${randomSuffix}`,
       createdAt: new Date().toISOString(),
-      isDemo: true,
+      isDemo: true
     };
   }
 }
@@ -234,7 +216,6 @@ export async function createCase({ title, description, status = "Open" }) {
 export function startCase() {
   return request("/process-instances/start", {
     method: "POST",
-    body: JSON.stringify({ processDefinitionKey: "caseManagementProcess" }),
     body: JSON.stringify({ processDefinitionKey: "caseManagementProcess" })
   });
 }
@@ -246,7 +227,6 @@ export function getCaseStatus(processInstanceId) {
 
 /** Lists all currently open tasks for a case. */
 export function listTasks(processInstanceId) {
-  return request(`/tasks?processInstanceId=${encodeURIComponent(processInstanceId)}`);
   return request(
     `/tasks?processInstanceId=${encodeURIComponent(processInstanceId)}`
   );
@@ -256,7 +236,6 @@ export function listTasks(processInstanceId) {
 export function triggerActivity(processInstanceId, activityId) {
   return request(`/process-instances/${processInstanceId}/trigger-activity`, {
     method: "POST",
-    body: JSON.stringify({ activityId }),
     body: JSON.stringify({ activityId })
   });
 }
@@ -265,7 +244,6 @@ export function triggerActivity(processInstanceId, activityId) {
 export function closeCase(processInstanceId) {
   return request(`/process-instances/${processInstanceId}/cancel-activity`, {
     method: "POST",
-    body: JSON.stringify({ activityId: "SubProcess_CaseTasks" }),
     body: JSON.stringify({ activityId: "SubProcess_CaseTasks" })
   });
 }
@@ -274,7 +252,6 @@ export function closeCase(processInstanceId) {
 export function completeTask(taskId, variables) {
   return request(`/tasks/${taskId}/complete`, {
     method: "POST",
-    body: variables ? JSON.stringify({ variables }) : undefined,
     body: variables ? JSON.stringify({ variables }) : undefined
   });
 }
@@ -283,7 +260,6 @@ export function completeTask(taskId, variables) {
 export function assignTask(taskId, userId) {
   return request(`/tasks/${taskId}/assign`, {
     method: "POST",
-    body: JSON.stringify({ userId }),
     body: JSON.stringify({ userId })
   });
 }
