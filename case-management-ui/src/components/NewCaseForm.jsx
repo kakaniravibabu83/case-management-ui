@@ -60,9 +60,6 @@ export default function NewCaseForm({ onCaseCreated }) {
       <div className="new-case-view__header">
         <p className="new-case-view__eyebrow">Backoffice Intake</p>
         <h1 className="new-case-view__title">Open New Case</h1>
-        <p className="new-case-view__subtitle">
-          Initiate a new case record and dispatch its Camunda 7 workflow.
-        </p>
       </div>
 
       {createdCase ? (

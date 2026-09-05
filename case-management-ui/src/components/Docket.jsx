@@ -26,11 +26,6 @@ export default function Docket({
   if (isBkGroup) {
     return (
       <aside className="docket docket--bk-focused">
-        <div className="docket__header">
-          <p className="docket__eyebrow">Navigation</p>
-          <h2 className="docket__title">Menu</h2>
-        </div>
-
         <nav className="docket__bk-nav" aria-label="Backoffice navigation">
           <button
             type="button"
