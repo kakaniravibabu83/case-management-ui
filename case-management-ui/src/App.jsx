@@ -15,8 +15,12 @@ function AuthenticatedWorkspace() {
   const isBkGroup = group?.name === "GROUP_BK";
 
   // Default view: For GROUP_BK, user specifically wants to see "Open new case"
-  const [activeView, setActiveView] = useState(isBkGroup ? "new-case" : "cases");
-  const [selectedCaseId, setSelectedCaseId] = useState(cases[0]?.processInstanceId ?? null);
+  const [activeView, setActiveView] = useState(
+    isBkGroup ? "new-case" : "cases"
+  );
+  const [selectedCaseId, setSelectedCaseId] = useState(
+    cases[0]?.processInstanceId ?? null
+  );
   const [caseStates, setCaseStates] = useState({});
   const [notice, setNotice] = useState(null);
   const noticeTimerRef = useRef(null);
@@ -44,7 +48,7 @@ function AuthenticatedWorkspace() {
     const caseIdentifier = newCase.caseNumber || newCase.id;
     showNotice({
       tone: "seal",
-      message: `Case Number #${caseIdentifier} is created`,
+      message: `Case Number #${caseIdentifier} is created`
     });
   };
 
@@ -97,7 +101,9 @@ function AuthenticatedWorkspace() {
           ) : (
             <div className="app__empty-state">
               <p className="app__empty-eyebrow">
-                {isBkGroup ? "Backoffice Intake" : `${group?.name || "Team"} Workspace`}
+                {isBkGroup
+                  ? "Backoffice Intake"
+                  : `${group?.name || "Team"} Workspace`}
               </p>
               <h2>
                 {isBkGroup
