@@ -1,28 +1,61 @@
-function formatOpenedAt(timestamp) {
-  const diffMs = Date.now() - timestamp;
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  return new Date(timestamp).toLocaleDateString();
-}
+import { useState, useMemo } from "react";
 
 export default function Docket({
   cases = [],
   selectedCaseId,
-  caseStates = {},
   onSelect,
-  onRemove,
   onOpenNewCase,
-  canOpenCase = true,
   groupName,
   activeView = "cases",
-  onViewChange
+  currentUser
 }) {
-  const isBkGroup = groupName === "GROUP_BK";
+  const [filterText, setFilterText] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("all"); // "all" | "unassigned" | "mine"
 
-  // Requirement: After user from group GROUP_BK successfully logged-in, show ONLY "Open new case" in left nav.
+  const isBkGroup = groupName === "GROUP_BK";
+  const userEmail = (currentUser?.email || "").trim().toLowerCase();
+
+  // Filter cases based on search text and owner filter tab
+  const filteredCases = useMemo(() => {
+    return cases.filter((c) => {
+      const caseNumber = (c.caseNumber || "").toLowerCase();
+      const title = (c.title || "").toLowerCase();
+      const idStr = String(c.id || "");
+      const q = filterText.trim().toLowerCase();
+
+      const matchesQuery =
+        !q || caseNumber.includes(q) || title.includes(q) || idStr.includes(q);
+      if (!matchesQuery) return false;
+
+      const owner =
+        typeof c.caseOwner === "string"
+          ? c.caseOwner.toLowerCase()
+          : (c.caseOwner?.email || "").toLowerCase();
+      const isUnassigned = !owner;
+      const isMine = owner && owner === userEmail;
+
+      if (ownerFilter === "unassigned") return isUnassigned;
+      if (ownerFilter === "mine") return isMine;
+      return true;
+    });
+  }, [cases, filterText, ownerFilter, userEmail]);
+
+  // Counts for filter chips
+  const counts = useMemo(() => {
+    let unassigned = 0;
+    let mine = 0;
+    cases.forEach((c) => {
+      const owner =
+        typeof c.caseOwner === "string"
+          ? c.caseOwner.toLowerCase()
+          : (c.caseOwner?.email || "").toLowerCase();
+      if (!owner) unassigned++;
+      else if (owner === userEmail) mine++;
+    });
+    return { all: cases.length, unassigned, mine };
+  }, [cases, userEmail]);
+
+  // Requirement for GROUP_BK: Show ONLY "Open new case" in left nav
   if (isBkGroup) {
     return (
       <aside className="docket docket--bk-focused">
@@ -42,66 +75,133 @@ export default function Docket({
     );
   }
 
-  // Fallback for non-GROUP_BK groups
   return (
-    <aside className="docket">
+    <aside className="docket docket--sam-queue">
       <div className="docket__header">
-        <p className="docket__eyebrow">{groupName || "Workspace"} Cases</p>
-        <h1 className="docket__title">Docket</h1>
+        <div className="docket__header-row">
+          <p className="docket__eyebrow">Queue • {groupName || "SAM"}</p>
+          <span className="docket__case-count">{cases.length} cases</span>
+        </div>
+        <h1 className="docket__title">Case Queue</h1>
       </div>
 
-      <nav className="docket__nav">
-        <button
-          type="button"
-          className={`docket__nav-btn ${activeView === "cases" ? "docket__nav-btn--active" : ""}`}
-          onClick={() => onViewChange && onViewChange("cases")}
-        >
-          Cases List ({cases.length})
-        </button>
-        <button
-          type="button"
-          className={`docket__nav-btn ${activeView === "group" ? "docket__nav-btn--active" : ""}`}
-          onClick={() => onViewChange && onViewChange("group")}
-        >
-          Group Info
-        </button>
-      </nav>
+      {/* Real-time Filter & Search */}
+      <div className="docket__search-box">
+        <input
+          type="text"
+          className="docket__search-input"
+          placeholder="Filter case numbers…"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          aria-label="Filter case numbers"
+        />
+        {filterText && (
+          <button
+            type="button"
+            className="docket__search-clear"
+            onClick={() => setFilterText("")}
+            aria-label="Clear filter"
+          >
+            ×
+          </button>
+        )}
+      </div>
 
-      {cases.length === 0 ? (
+      {/* Filter Chips */}
+      <div
+        className="docket__filter-chips"
+        role="tablist"
+        aria-label="Filter cases by ownership"
+      >
+        <button
+          type="button"
+          className={`docket__chip ${ownerFilter === "all" ? "docket__chip--active" : ""}`}
+          onClick={() => setOwnerFilter("all")}
+        >
+          All ({counts.all})
+        </button>
+        <button
+          type="button"
+          className={`docket__chip ${ownerFilter === "unassigned" ? "docket__chip--active" : ""}`}
+          onClick={() => setOwnerFilter("unassigned")}
+        >
+          Unassigned ({counts.unassigned})
+        </button>
+        <button
+          type="button"
+          className={`docket__chip ${ownerFilter === "mine" ? "docket__chip--active" : ""}`}
+          onClick={() => setOwnerFilter("mine")}
+        >
+          My Cases ({counts.mine})
+        </button>
+      </div>
+
+      {/* Case Numbers List */}
+      {filteredCases.length === 0 ? (
         <p className="docket__empty">
-          No active cases available in this session.
+          {filterText || ownerFilter !== "all"
+            ? "No cases match current filter."
+            : "No cases registered yet."}
         </p>
       ) : (
         <ul className="docket__list">
-          {cases.map((c) => {
-            const state = caseStates[c.processInstanceId];
-            const isSelected = c.processInstanceId === selectedCaseId;
+          {filteredCases.map((c) => {
+            const isSelected =
+              String(c.caseNumber) === String(selectedCaseId) ||
+              String(c.id) === String(selectedCaseId);
+
+            const owner =
+              typeof c.caseOwner === "string"
+                ? c.caseOwner.toLowerCase()
+                : (c.caseOwner?.email || "").toLowerCase();
+            const isUnassigned = !owner;
+            const isMine = owner && owner === userEmail;
+            const isCompleted =
+              String(c.status || "").toUpperCase() === "COMPLETED" ||
+              String(c.status || "").toUpperCase() === "CLOSED" ||
+              String(c.state || "").toUpperCase() === "COMPLETED" ||
+              String(c.state || "").toUpperCase() === "INTERNALLY_TERMINATED";
+
             return (
-              <li key={c.processInstanceId}>
+              <li key={c.caseNumber || c.id}>
                 <button
+                  type="button"
                   className={`docket__item ${isSelected ? "docket__item--selected" : ""}`}
-                  onClick={() => onSelect(c.processInstanceId)}
+                  onClick={() => onSelect(c.caseNumber || c.id)}
                 >
-                  <span className="docket__item-id">
-                    {c.processInstanceId.slice(0, 8)}
-                  </span>
-                  <span className="docket__item-meta">
+                  <div className="docket__item-top">
+                    <span className="docket__item-number">
+                      {c.caseNumber || `Case #${c.id}`}
+                    </span>
                     <span
-                      className={`docket__dot docket__dot--${state === "ACTIVE" ? "seal" : "ink"}`}
-                    />
-                    {formatOpenedAt(c.openedAt)}
-                  </span>
+                      className={`docket__item-status ${
+                        isCompleted ? "docket__item-status--completed" : ""
+                      }`}
+                    >
+                      {isCompleted ? "COMPLETED" : c.status || "Open"}
+                    </span>
+                  </div>
+
+                  <div className="docket__item-bottom">
+                    {isCompleted ? (
+                      <span className="docket__badge docket__badge--completed">
+                        🔒 Completed
+                      </span>
+                    ) : isUnassigned ? (
+                      <span className="docket__badge docket__badge--unassigned">
+                        ● Unassigned
+                      </span>
+                    ) : isMine ? (
+                      <span className="docket__badge docket__badge--mine">
+                        ✓ Claimed by you
+                      </span>
+                    ) : (
+                      <span className="docket__badge docket__badge--claimed">
+                        Claimed
+                      </span>
+                    )}
+                  </div>
                 </button>
-                {onRemove && (
-                  <button
-                    className="docket__item-remove"
-                    onClick={() => onRemove(c.processInstanceId)}
-                    aria-label="Remove from docket"
-                    title="Remove from docket"
-                  >
-                    ×
-                  </button>
-                )}
               </li>
             );
           })}
