@@ -15,6 +15,12 @@ function formatRelativeTime(isoString) {
 }
 
 function taskLabel(taskDefinitionKey, name) {
+  if (
+    taskDefinitionKey === "UserTask_Sam" ||
+    (name || "").trim().toUpperCase() === "SAM"
+  ) {
+    return "SAM Investigation Review";
+  }
   if (name && !name.startsWith("UserTask_")) return name;
   const map = {
     UserTask_Sam: "SAM Investigation Review",
@@ -27,10 +33,54 @@ function taskLabel(taskDefinitionKey, name) {
   return map[taskDefinitionKey] || name || taskDefinitionKey;
 }
 
+export function getStatusPillInfo(status, isCompleted) {
+  if (isCompleted) {
+    return { label: "Completed", className: "sam-status-pill--completed" };
+  }
+  const s = String(status || "").trim();
+  const lower = s.toLowerCase();
+
+  if (!lower || lower === "open") {
+    return { label: "Open", className: "sam-status-pill--open" };
+  }
+  if (lower.includes("in-progress") || lower.includes("in progress")) {
+    return { label: "In-Progress", className: "sam-status-pill--in-progress" };
+  }
+  if (lower.includes("send for business confirmation")) {
+    return {
+      label: "Send for Business Confirmation",
+      className: "sam-status-pill--send-for-biz"
+    };
+  }
+  if (lower.includes("business confirmation response received")) {
+    return {
+      label: "Business Confirmation Response Received",
+      className: "sam-status-pill--biz-response"
+    };
+  }
+  if (lower.includes("send for team")) {
+    return {
+      label: "Send for Team",
+      className: "sam-status-pill--send-for-team"
+    };
+  }
+  if (lower.includes("team response received")) {
+    return {
+      label: "Team response Received",
+      className: "sam-status-pill--team-response"
+    };
+  }
+  if (lower === "completed" || lower === "closed") {
+    return { label: "Completed", className: "sam-status-pill--completed" };
+  }
+  return { label: s, className: "sam-status-pill--neutral" };
+}
+
 const BUSINESS_CONFIRMATION_TASK = {
   activityId: "UserTask_BusinessConfirmation",
   title: "Business Confirmation",
-  department: "Business Confirmation Team",
+  department: "GROUP_BUSINESS_CONFIRMATION",
+  candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
   description:
     "Mandatory initial validation of business grounds, case eligibility, and intake prerequisites."
 };
@@ -74,6 +124,7 @@ export default function SamCaseDetail({
   onClaimCase,
   onReassignCase,
   onCompleteCase,
+  onUpdateCaseStatus,
   actionLoading = false,
   isSamGroup: isSamGroupProp
 }) {
@@ -114,6 +165,14 @@ export default function SamCaseDetail({
   const [notesSavedNotice, setNotesSavedNotice] = useState(null);
   const [businessConfirmationStatus, setBusinessConfirmationStatus] =
     useState("NOT_TRIGGERED"); // "NOT_TRIGGERED" | "PENDING_CONFIRMATION" | "CONFIRMED"
+  const [businessConfirmationResponse, setBusinessConfirmationResponse] =
+    useState(null); // "RENEWAL_REQUIRED" | "RENEWAL_NOT_REQUIRED" | null
+  const [businessConfirmationNotes, setBusinessConfirmationNotes] =
+    useState("");
+  const [businessConfirmationCompletedBy, setBusinessConfirmationCompletedBy] =
+    useState("");
+  const [businessConfirmationCompletedAt, setBusinessConfirmationCompletedAt] =
+    useState("");
   const [selectedTasksToTrigger, setSelectedTasksToTrigger] = useState([]);
   const [triggeringTaskIds, setTriggeringTaskIds] = useState([]);
   const [completedActivities, setCompletedActivities] = useState(
@@ -210,6 +269,16 @@ export default function SamCaseDetail({
   // Filter helper: filter-out GROUP_BK officer, and filter out SAM task for SAM members
   const isWorkflowTask = useCallback(
     (task) => {
+      // Always include Business Confirmation tasks for GROUP_BUSINESS_CONFIRMATION
+      if (
+        task.taskDefinitionKey === "UserTask_BusinessConfirmation" ||
+        task.candidateGroup === "GROUP_BUSINESS_CONFIRMATION" ||
+        (Array.isArray(task.candidateGroups) &&
+          task.candidateGroups.includes("GROUP_BUSINESS_CONFIRMATION"))
+      ) {
+        return true;
+      }
+
       const assignee = (task.assignee || "").trim().toLowerCase();
       // Filter out if assignee matches known GROUP_BK member email
       if (assignee && bkOfficerEmails.has(assignee)) {
@@ -257,8 +326,15 @@ export default function SamCaseDetail({
         return false;
       }
 
-      // Don't show SAM Task under Tasks tab, when a SAM Group member logged-in
-      if (isSamGroup) {
+      // Don't show open SAM Task under Tasks tab while case is in progress, when a SAM Group member logged-in
+      // BUT if task is COMPLETED, ALWAYS SHOW IT!
+      const isTaskCompleted =
+        task.status === "COMPLETED" ||
+        Boolean(task.endTime) ||
+        isCompleted ||
+        caseItem?.status === "Completed";
+
+      if (isSamGroup && !isTaskCompleted) {
         if (
           taskDef === "usertask_sam" ||
           taskDef.includes("sam") ||
@@ -277,7 +353,7 @@ export default function SamCaseDetail({
 
       return true;
     },
-    [bkOfficerEmails, isSamGroup]
+    [bkOfficerEmails, isSamGroup, isCompleted, caseItem?.status]
   );
 
   // Filter open workflow tasks
@@ -372,6 +448,10 @@ export default function SamCaseDetail({
         if (isSubscribed) {
           setSamNotes("");
           setBusinessConfirmationStatus("NOT_TRIGGERED");
+          setBusinessConfirmationResponse(null);
+          setBusinessConfirmationNotes("");
+          setBusinessConfirmationCompletedBy("");
+          setBusinessConfirmationCompletedAt("");
           setSelectedTasksToTrigger([]);
         }
       });
@@ -383,6 +463,16 @@ export default function SamCaseDetail({
     const stored = api.getStoredActionsData?.(caseKey);
     let initialNotes = stored?.samNotes || "";
     let initialStatus = stored?.businessConfirmationStatus;
+    let initialResponse =
+      stored?.businessConfirmationResponse ||
+      stored?.renewalProcessDecision ||
+      null;
+    let initialBizNotes = stored?.businessConfirmationNotes || "";
+    let initialBizUser =
+      stored?.businessConfirmationCompletedBy ||
+      stored?.businessConfirmationCompletedByEmail ||
+      "";
+    let initialBizTime = stored?.businessConfirmationCompletedAt || "";
 
     if (caseItem?.camundaProcessInstanceId) {
       api
@@ -394,6 +484,18 @@ export default function SamCaseDetail({
           }
           if (vars?.businessConfirmationStatus && !initialStatus) {
             setBusinessConfirmationStatus(vars.businessConfirmationStatus);
+          }
+          if (vars?.businessConfirmationResponse && !initialResponse) {
+            setBusinessConfirmationResponse(vars.businessConfirmationResponse);
+          } else if (vars?.renewalProcessDecision && !initialResponse) {
+            setBusinessConfirmationResponse(vars.renewalProcessDecision);
+          } else if (vars?.renewalRequired !== undefined && !initialResponse) {
+            setBusinessConfirmationResponse(
+              vars.renewalRequired ? "RENEWAL_REQUIRED" : "RENEWAL_NOT_REQUIRED"
+            );
+          }
+          if (vars?.businessConfirmationNotes && !initialBizNotes) {
+            setBusinessConfirmationNotes(vars.businessConfirmationNotes);
           }
         })
         .catch(() => {});
@@ -411,6 +513,10 @@ export default function SamCaseDetail({
       if (isSubscribed) {
         setSamNotes(initialNotes);
         setBusinessConfirmationStatus(initialStatus);
+        setBusinessConfirmationResponse(initialResponse);
+        setBusinessConfirmationNotes(initialBizNotes);
+        setBusinessConfirmationCompletedBy(initialBizUser);
+        setBusinessConfirmationCompletedAt(initialBizTime);
         setSelectedTasksToTrigger([]);
         setCompletedActivities(new Set());
       }
@@ -433,11 +539,56 @@ export default function SamCaseDetail({
     );
   }, [tasks]);
 
+  const completedBizTask = useMemo(() => {
+    return completedTasks.find(
+      (t) => t.taskDefinitionKey === "UserTask_BusinessConfirmation"
+    );
+  }, [completedTasks]);
+
   const effectiveBusinessConfirmationStatus = useMemo(() => {
     if (businessConfirmationStatus === "CONFIRMED") return "CONFIRMED";
+    if (completedBizTask) return "CONFIRMED";
     if (isBusinessConfirmationActiveInTasks) return "PENDING_CONFIRMATION";
     return businessConfirmationStatus;
-  }, [businessConfirmationStatus, isBusinessConfirmationActiveInTasks]);
+  }, [
+    businessConfirmationStatus,
+    completedBizTask,
+    isBusinessConfirmationActiveInTasks
+  ]);
+
+  // Check whether Renewal is explicitly not required
+  const isRenewalNotRequired = useMemo(() => {
+    if (businessConfirmationResponse === "RENEWAL_NOT_REQUIRED") return true;
+    if (completedBizTask?.decision === "RENEWAL_NOT_REQUIRED") return true;
+    const statusLower = String(caseItem?.status || "").toLowerCase();
+    if (statusLower.includes("renewal not required")) return true;
+    const foundAudit = auditEntries.some(
+      (e) =>
+        (e.action === "BUSINESS_CONFIRMATION_COMPLETED" ||
+          (e.details || "").toLowerCase().includes("business confirmation")) &&
+        (e.details || "").toLowerCase().includes("not required")
+    );
+    if (foundAudit) return true;
+    return false;
+  }, [
+    businessConfirmationResponse,
+    completedBizTask,
+    caseItem?.status,
+    auditEntries
+  ]);
+
+  const isRenewalRequired = useMemo(() => {
+    if (isRenewalNotRequired) return false;
+    if (businessConfirmationResponse === "RENEWAL_REQUIRED") return true;
+    if (completedBizTask?.decision === "RENEWAL_REQUIRED") return true;
+    if (effectiveBusinessConfirmationStatus === "CONFIRMED") return true;
+    return false;
+  }, [
+    isRenewalNotRequired,
+    businessConfirmationResponse,
+    completedBizTask,
+    effectiveBusinessConfirmationStatus
+  ]);
 
   // Check whether an activity is currently active (in progress / awaiting completion)
   const isTaskActive = useCallback(
@@ -577,7 +728,12 @@ export default function SamCaseDetail({
           id: ct.id,
           name: taskLabel(ct.taskDefinitionKey, ct.name),
           taskDefinitionKey: ct.taskDefinitionKey,
-          assignee: ct.assignee || ct.completedBy || "Specialized Team",
+          assignee:
+            ct.assignee ||
+            ct.completedBy ||
+            (ct.taskDefinitionKey === "UserTask_Sam"
+              ? caseItem?.caseOwner || currentUser?.email || "SAM Member"
+              : "Specialized Team"),
           time: ct.endTime || ct.createTime,
           timeLabel: "Completed",
           status: "COMPLETED"
@@ -596,9 +752,10 @@ export default function SamCaseDetail({
         id: `biz-conf-${caseItem?.id || "done"}`,
         name: "Business Confirmation",
         taskDefinitionKey: "UserTask_BusinessConfirmation",
-        assignee: "Business Confirmation Team",
-        time: null,
-        timeLabel: "Confirmed",
+        assignee:
+          businessConfirmationCompletedBy || "Business Confirmation Team",
+        time: businessConfirmationCompletedAt || null,
+        timeLabel: "Completed",
         status: "COMPLETED"
       });
       completedKeys.add("UserTask_BusinessConfirmation");
@@ -620,13 +777,37 @@ export default function SamCaseDetail({
       }
     });
 
+    // 5. Add SAM User Task if case is completed and not already in list
+    if (
+      (isCompleted || caseItem?.status === "Completed") &&
+      !completedKeys.has("UserTask_Sam")
+    ) {
+      list.push({
+        id: `sam-task-${caseItem?.id || "done"}`,
+        name: "SAM Investigation Review",
+        taskDefinitionKey: "UserTask_Sam",
+        assignee:
+          caseItem?.caseOwner || currentUser?.email || "sam@example.com",
+        time: new Date().toISOString(),
+        timeLabel: "Completed",
+        status: "COMPLETED"
+      });
+      completedKeys.add("UserTask_Sam");
+    }
+
     return list;
   }, [
     filteredTasks,
     filteredCompletedTasks,
     effectiveBusinessConfirmationStatus,
+    businessConfirmationCompletedBy,
+    businessConfirmationCompletedAt,
     completedTaskKeysFromAudit,
-    caseItem?.id
+    isCompleted,
+    caseItem?.id,
+    caseItem?.status,
+    caseItem?.caseOwner,
+    currentUser?.email
   ]);
 
   const openTasksCount = useMemo(() => {
@@ -663,6 +844,11 @@ export default function SamCaseDetail({
       return false;
     }
 
+    // If Business Confirmation determined Renewal is Not Required, SAM member can immediately complete the case
+    if (isRenewalNotRequired) {
+      return true;
+    }
+
     // Must have completed workflow tasks or confirmed business confirmation
     const hasProgress =
       completedTasksCount > 0 ||
@@ -676,6 +862,7 @@ export default function SamCaseDetail({
     openTasksCount,
     triggeringTaskIds.length,
     effectiveBusinessConfirmationStatus,
+    isRenewalNotRequired,
     completedTasksCount,
     allWorkflowTasks.length
   ]);
@@ -710,6 +897,8 @@ export default function SamCaseDetail({
   // Mark Business Confirmation as Confirmed by Business Confirmation team
   const handleConfirmBusinessConfirmation = async () => {
     const caseKey = caseItem?.caseNumber || caseItem?.id;
+    const newStatus = "Business Confirmation Response Received";
+
     setBusinessConfirmationStatus("CONFIRMED");
     api.setStoredActionsData?.(caseKey, {
       businessConfirmationStatus: "CONFIRMED"
@@ -717,34 +906,51 @@ export default function SamCaseDetail({
     if (processInstanceId) {
       api
         .setProcessVariables(processInstanceId, {
-          businessConfirmationStatus: "CONFIRMED"
+          businessConfirmationStatus: "CONFIRMED",
+          caseStatus: newStatus,
+          status: newStatus
         })
         .catch(() => {});
     }
-    // Also record in demo audit trail
-    api.appendDemoAudit?.(caseKey, {
-      id: Date.now(),
-      caseId: caseId ? Number(caseId) || caseId : null,
-      caseNumber: caseNumber || null,
-      action: "BUSINESS_CONFIRMED",
-      status: "Open",
-      details:
-        "Business Confirmation team validated and confirmed case eligibility. Remaining tasks unlocked for SAM user.",
-      createdBy: "Business Confirmation Team",
-      createdAt: new Date().toISOString(),
-      camundaProcessInstanceId: processInstanceId
+
+    // Complete the active Business Confirmation task in Camunda/demo if present
+    const bizTask = tasks.find(
+      (t) => t.taskDefinitionKey === "UserTask_BusinessConfirmation"
+    );
+    if (bizTask) {
+      try {
+        await api.completeTask(bizTask.id);
+      } catch (e) {
+        console.warn(
+          "Could not complete Camunda business confirmation task",
+          e
+        );
+      }
+    }
+
+    // Update case status across DB, Camunda, session store, and parent state
+    await onUpdateCaseStatus?.(caseItem, newStatus, {
+      userName: "GROUP_BUSINESS_CONFIRMATION",
+      userEmail: "biz.confirm@example.com",
+      recordAudit: true,
+      auditAction: "BUSINESS_CONFIRMED",
+      auditDetails:
+        "Business Confirmation team (GROUP_BUSINESS_CONFIRMATION) validated and confirmed case eligibility. Case status updated to 'Business Confirmation Response Received'."
     });
+
     setFeedback({
       tone: "seal",
-      message:
-        "Business Confirmation verified and confirmed! Remaining tasks are now unlocked."
+      message: `Business Confirmation verified and confirmed! Case status updated to "${newStatus}". Remaining tasks are now unlocked.`
     });
+    await loadTasks();
     await loadAuditTrail();
   };
 
   // Reset Business Confirmation status (for testing)
-  const handleResetBusinessConfirmation = () => {
+  const handleResetBusinessConfirmation = async () => {
     const caseKey = caseItem?.caseNumber || caseItem?.id;
+    const resetStatus = isUnassigned ? "Open" : "In-Progress";
+
     setBusinessConfirmationStatus("NOT_TRIGGERED");
     api.setStoredActionsData?.(caseKey, {
       businessConfirmationStatus: "NOT_TRIGGERED"
@@ -752,15 +958,20 @@ export default function SamCaseDetail({
     if (processInstanceId) {
       api
         .setProcessVariables(processInstanceId, {
-          businessConfirmationStatus: "NOT_TRIGGERED"
+          businessConfirmationStatus: "NOT_TRIGGERED",
+          caseStatus: resetStatus,
+          status: resetStatus
         })
         .catch(() => {});
     }
+    await onUpdateCaseStatus?.(caseItem, resetStatus);
     setSelectedTasksToTrigger([]);
     setFeedback({
       tone: "neutral",
-      message: "Business Confirmation status reset to Not Triggered."
+      message: `Business Confirmation status reset to Not Triggered. Case status reset to "${resetStatus}".`
     });
+    await loadTasks();
+    await loadAuditTrail();
   };
 
   // Trigger a single task
@@ -780,6 +991,19 @@ export default function SamCaseDetail({
       return;
     }
 
+    // Renewal Not Required check: Cannot trigger any other tasks if renewal is not required
+    if (
+      activityId !== "UserTask_BusinessConfirmation" &&
+      isRenewalNotRequired
+    ) {
+      setFeedback({
+        tone: "rust",
+        message:
+          "Cannot trigger tasks: Business Confirmation determined that Renewal is Not Required. Downstream review tasks are blocked."
+      });
+      return;
+    }
+
     // STRICT RE-TRIGGER CHECK: Cannot trigger again if task is already active/incomplete
     if (isTaskActive(activityId)) {
       setFeedback({
@@ -789,12 +1013,18 @@ export default function SamCaseDetail({
       return;
     }
 
+    const isBiz = activityId === "UserTask_BusinessConfirmation";
+    const newStatus = isBiz
+      ? "Send for Business Confirmation"
+      : "Send for Team";
+
     setTriggeringTaskIds((prev) => [...prev, activityId]);
     setFeedback(null);
     try {
       await api.triggerActivity(processInstanceId, activityId, {
         caseId,
         caseNumber,
+        status: newStatus,
         userName:
           `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim() ||
           currentUser?.email,
@@ -802,7 +1032,7 @@ export default function SamCaseDetail({
         notes: samNotes.trim() || undefined
       });
 
-      if (activityId === "UserTask_BusinessConfirmation") {
+      if (isBiz) {
         setBusinessConfirmationStatus("PENDING_CONFIRMATION");
         const caseKey = caseNumber || caseId;
         api.setStoredActionsData?.(caseKey, {
@@ -811,15 +1041,29 @@ export default function SamCaseDetail({
         if (processInstanceId) {
           api
             .setProcessVariables(processInstanceId, {
-              businessConfirmationStatus: "PENDING_CONFIRMATION"
+              businessConfirmationStatus: "PENDING_CONFIRMATION",
+              caseStatus: newStatus,
+              status: newStatus
             })
             .catch(() => {});
         }
       }
 
+      await onUpdateCaseStatus?.(caseItem, newStatus, {
+        userName:
+          `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim() ||
+          currentUser?.email,
+        userEmail: currentUser?.email,
+        recordAudit: true,
+        auditAction: "TASK_TRIGGERED",
+        auditDetails: `Task '${taskLabel(activityId)}' triggered by ${
+          currentUser?.firstName || "SAM user"
+        }. Case status updated to '${newStatus}'.`
+      });
+
       setFeedback({
         tone: "seal",
-        message: `Successfully triggered task: ${taskLabel(activityId)}.`
+        message: `Successfully triggered task: ${taskLabel(activityId)}. Case status updated to "${newStatus}".`
       });
 
       // Clear from selected tasks if it was selected
@@ -849,6 +1093,17 @@ export default function SamCaseDetail({
       return;
     }
     if (selectedTasksToTrigger.length === 0) return;
+
+    if (isRenewalNotRequired) {
+      setFeedback({
+        tone: "rust",
+        message:
+          "Cannot trigger tasks: Business Confirmation determined that Renewal is Not Required. Downstream review tasks are blocked."
+      });
+      setSelectedTasksToTrigger([]);
+      return;
+    }
+
     if (!processInstanceId) {
       setFeedback({
         tone: "rust",
@@ -885,10 +1140,16 @@ export default function SamCaseDetail({
     const errors = [];
 
     for (const actId of toTrigger) {
+      const isBiz = actId === "UserTask_BusinessConfirmation";
+      const statusForTask = isBiz
+        ? "Send for Business Confirmation"
+        : "Send for Team";
+
       try {
         await api.triggerActivity(processInstanceId, actId, {
           caseId,
           caseNumber,
+          status: statusForTask,
           userName:
             `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim() ||
             currentUser?.email,
@@ -907,9 +1168,26 @@ export default function SamCaseDetail({
     setSelectedTasksToTrigger([]);
 
     if (triggeredNames.length > 0) {
+      const hasOther = toTrigger.some(
+        (id) => id !== "UserTask_BusinessConfirmation"
+      );
+      const bulkStatus = hasOther
+        ? "Send for Team"
+        : "Send for Business Confirmation";
+
+      await onUpdateCaseStatus?.(caseItem, bulkStatus, {
+        userName:
+          `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim() ||
+          currentUser?.email,
+        userEmail: currentUser?.email,
+        recordAudit: true,
+        auditAction: "TASKS_BULK_TRIGGERED",
+        auditDetails: `Triggered ${triggeredNames.join(", ")}. Case status updated to '${bulkStatus}'.`
+      });
+
       let msg = `Successfully triggered ${triggeredNames.length} task${
         triggeredNames.length > 1 ? "s" : ""
-      }: ${triggeredNames.join(", ")}.`;
+      }: ${triggeredNames.join(", ")}. Case status updated to "${bulkStatus}".`;
       if (activeSelected.length > 0) {
         const skippedNames = activeSelected
           .map((id) => taskLabel(id))
@@ -932,6 +1210,54 @@ export default function SamCaseDetail({
 
     await loadTasks();
     await loadAuditTrail();
+  };
+
+  // Complete team task and update case status to "Team response Received"
+  const handleCompleteTeamTask = async (taskId, activityId, taskTitle) => {
+    if (isCompleted) {
+      setFeedback({
+        tone: "rust",
+        message: "Cannot complete task: This case is completed and read-only."
+      });
+      return;
+    }
+
+    const name = taskTitle || taskLabel(activityId) || "Team Task";
+    const newStatus = "Team response Received";
+    try {
+      let resolvedTaskId = taskId;
+      if (!resolvedTaskId) {
+        const found = tasks.find((t) => t.taskDefinitionKey === activityId);
+        resolvedTaskId = found?.id;
+      }
+
+      if (resolvedTaskId) {
+        await api.completeTask(resolvedTaskId);
+      }
+
+      await onUpdateCaseStatus?.(caseItem, newStatus, {
+        userName:
+          `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim() ||
+          currentUser?.email,
+        userEmail: currentUser?.email,
+        recordAudit: true,
+        auditAction: "TEAM_RESPONSE_RECEIVED",
+        auditDetails: `Response received for task '${name}'. Case status updated to 'Team response Received'.`
+      });
+
+      setFeedback({
+        tone: "seal",
+        message: `Response received for "${name}"! Case status updated to "${newStatus}".`
+      });
+
+      await loadTasks();
+      await loadAuditTrail();
+    } catch (err) {
+      setFeedback({
+        tone: "rust",
+        message: err.message || `Failed to record response for ${name}.`
+      });
+    }
   };
 
   // Toggle selection for bulk trigger (blocked if task is active)
@@ -1032,21 +1358,31 @@ export default function SamCaseDetail({
     setIsCompletingCase(true);
     setFeedback(null);
     try {
+      const completionDetails = isRenewalNotRequired
+        ? `Case #${caseItem.caseNumber || caseItem.id} marked as Completed by ${
+            currentUser?.firstName || "SAM user"
+          }. Outcome: Renewal Not Required per Business Confirmation determination.`
+        : undefined;
+
       if (onCompleteCase) {
-        await onCompleteCase(caseItem);
+        await onCompleteCase(caseItem, { details: completionDetails });
       } else {
         await api.completeCase({
           caseId: caseItem.id,
           caseNumber: caseItem.caseNumber,
           processInstanceId,
-          user: currentUser
+          user: currentUser,
+          details: completionDetails
         });
       }
 
       setShowCompleteConfirmModal(false);
+      setProcessStatus({ state: "COMPLETED" });
       setFeedback({
         tone: "seal",
-        message: `Case #${caseItem.caseNumber || caseItem.id} has been marked as COMPLETED and archived.`
+        message: `Case #${caseItem.caseNumber || caseItem.id} has been marked as COMPLETED and archived.${
+          isRenewalNotRequired ? " (Outcome: Renewal Not Required)" : ""
+        }`
       });
 
       // Refresh tasks and audit trail so completed event shows up immediately
@@ -1091,15 +1427,11 @@ export default function SamCaseDetail({
               </button>
             )}
             <span
-              className={`sam-status-pill sam-status-pill--${
-                isCompleted
-                  ? "completed"
-                  : caseItem.status?.toLowerCase() === "open"
-                    ? "open"
-                    : "neutral"
+              className={`sam-status-pill ${
+                getStatusPillInfo(caseItem.status, isCompleted).className
               }`}
             >
-              {isCompleted ? "COMPLETED" : caseItem.status || "Open"}
+              {getStatusPillInfo(caseItem.status, isCompleted).label}
             </span>
           </div>
         </div>
@@ -1585,6 +1917,7 @@ export default function SamCaseDetail({
                       <th>Status</th>
                       <th>Assignee</th>
                       <th>Timeline</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1644,6 +1977,42 @@ export default function SamCaseDetail({
                             ) : (
                               <span className="sam-task-time-label">
                                 {task.timeLabel}
+                              </span>
+                            )}
+                          </td>
+                          <td className="sam-task-action-cell">
+                            {isOpen ? (
+                              task.taskDefinitionKey ===
+                              "UserTask_BusinessConfirmation" ? (
+                                <button
+                                  type="button"
+                                  className="sam-btn-table-action sam-btn-table-action--confirm"
+                                  onClick={handleConfirmBusinessConfirmation}
+                                  disabled={isCompleted || actionLoading}
+                                  title="Mark business confirmation validated and confirmed"
+                                >
+                                  ✓ Confirm & Respond
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="sam-btn-table-action sam-btn-table-action--response"
+                                  onClick={() =>
+                                    handleCompleteTeamTask(
+                                      task.id,
+                                      task.taskDefinitionKey,
+                                      task.name
+                                    )
+                                  }
+                                  disabled={isCompleted || actionLoading}
+                                  title={`Mark response received for ${task.name}`}
+                                >
+                                  ✓ Receive Response
+                                </button>
+                              )
+                            ) : (
+                              <span className="sam-task-finalized-tag">
+                                ✓ Finalized
                               </span>
                             )}
                           </td>
@@ -1833,15 +2202,11 @@ export default function SamCaseDetail({
                   </h3>
                 </div>
                 <span
-                  className={`sam-status-pill sam-status-pill--${
-                    isCompleted
-                      ? "completed"
-                      : caseItem.status?.toLowerCase() === "open"
-                        ? "open"
-                        : "neutral"
+                  className={`sam-status-pill ${
+                    getStatusPillInfo(caseItem.status, isCompleted).className
                   }`}
                 >
-                  {isCompleted ? "COMPLETED" : caseItem.status || "Open"}
+                  {getStatusPillInfo(caseItem.status, isCompleted).label}
                 </span>
               </div>
 
@@ -2036,9 +2401,15 @@ export default function SamCaseDetail({
 
                   <div className="sam-stage-header__right">
                     {effectiveBusinessConfirmationStatus === "CONFIRMED" ? (
-                      <span className="sam-status-pill-lg sam-status-pill-lg--confirmed">
-                        ✓ Confirmed by Business Team
-                      </span>
+                      isRenewalNotRequired ? (
+                        <span className="sam-status-pill-lg sam-status-pill-lg--not-required">
+                          ⚠️ Confirmed • Renewal Not Required
+                        </span>
+                      ) : (
+                        <span className="sam-status-pill-lg sam-status-pill-lg--confirmed">
+                          ✓ Confirmed • Renewal Required
+                        </span>
+                      )
                     ) : effectiveBusinessConfirmationStatus ===
                       "PENDING_CONFIRMATION" ? (
                       <span className="sam-status-pill-lg sam-status-pill-lg--pending">
@@ -2117,14 +2488,48 @@ export default function SamCaseDetail({
 
                   {effectiveBusinessConfirmationStatus === "CONFIRMED" && (
                     <div className="sam-stage-confirmed-actions">
-                      <div className="sam-stage-confirmed-info">
-                        <span className="sam-check-icon">✓</span>
-                        <span>
-                          <strong>Business Confirmation confirmed!</strong> The
-                          Business Confirmation team has validated this case.
-                          You may now trigger any or all of the remaining tasks
-                          below.
+                      <div
+                        className={`sam-stage-confirmed-info ${
+                          isRenewalNotRequired
+                            ? "sam-stage-confirmed-info--not-required"
+                            : isRenewalRequired
+                              ? "sam-stage-confirmed-info--required"
+                              : ""
+                        }`}
+                      >
+                        <span
+                          className={`sam-check-icon ${
+                            isRenewalNotRequired ? "sam-check-icon--warn" : ""
+                          }`}
+                        >
+                          {isRenewalNotRequired ? "⚠️" : "✓"}
                         </span>
+                        <div className="sam-stage-confirmed-body">
+                          <strong>
+                            {isRenewalNotRequired
+                              ? "Business Confirmation Completed: Renewal is NOT Required"
+                              : "Business Confirmation Completed: Renewal Required"}
+                          </strong>
+                          <p>
+                            {isRenewalNotRequired
+                              ? "The Business Confirmation team completed review and decided that the renewal process is not required for this case. Downstream review tasks are blocked; you can only complete this case."
+                              : "The Business Confirmation team has validated this case and confirmed that the renewal process is required. You may now trigger any or all of the remaining tasks below."}
+                          </p>
+                          {businessConfirmationNotes && (
+                            <p className="sam-stage-notes-quote">
+                              <strong>Remarks:</strong> “
+                              {businessConfirmationNotes}”
+                            </p>
+                          )}
+                          {businessConfirmationCompletedBy && (
+                            <p className="sam-stage-meta-author">
+                              Reviewed by:{" "}
+                              <strong>{businessConfirmationCompletedBy}</strong>
+                              {businessConfirmationCompletedAt &&
+                                ` • ${new Date(businessConfirmationCompletedAt).toLocaleString()}`}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -2142,7 +2547,8 @@ export default function SamCaseDetail({
               {/* STEP 2: REMAINING TASKS (DISCRETIONARY: SINGLE OR MULTIPLE) */}
               <div
                 className={`sam-stage-box sam-stage-box--stage2 ${
-                  effectiveBusinessConfirmationStatus !== "CONFIRMED"
+                  effectiveBusinessConfirmationStatus !== "CONFIRMED" ||
+                  isRenewalNotRequired
                     ? "sam-stage-box--locked"
                     : ""
                 }`}
@@ -2160,9 +2566,15 @@ export default function SamCaseDetail({
 
                   <div className="sam-stage-header__right">
                     {effectiveBusinessConfirmationStatus === "CONFIRMED" ? (
-                      <span className="sam-status-pill-lg sam-status-pill-lg--unlocked">
-                        🔓 Unlocked — SAM User Decision
-                      </span>
+                      isRenewalNotRequired ? (
+                        <span className="sam-status-pill-lg sam-status-pill-lg--locked-warn">
+                          🛑 Blocked — Renewal Not Required
+                        </span>
+                      ) : (
+                        <span className="sam-status-pill-lg sam-status-pill-lg--unlocked">
+                          🔓 Unlocked — SAM User Decision
+                        </span>
+                      )
                     ) : (
                       <span className="sam-status-pill-lg sam-status-pill-lg--locked">
                         🔒 Locked — Awaiting Business Confirmation
@@ -2171,66 +2583,97 @@ export default function SamCaseDetail({
                   </div>
                 </div>
 
-                <p className="sam-stage-desc">
-                  {effectiveBusinessConfirmationStatus === "CONFIRMED"
-                    ? "Choose single tasks to trigger individually, or select multiple tasks via the checkboxes to trigger all selected tasks at once. Any task that is triggered and in progress cannot be re-triggered until completed."
-                    : "These tasks are locked. You must first trigger Business Confirmation (Step 1) and receive confirmation before any of these tasks can be dispatched."}
-                </p>
+                {isRenewalNotRequired ? (
+                  <div className="sam-renewal-blocked-card" role="alert">
+                    <div className="sam-renewal-blocked-card__left">
+                      <span className="sam-renewal-blocked-card__icon">🛑</span>
+                      <div>
+                        <h4 className="sam-renewal-blocked-card__title">
+                          Downstream Tasks Strictly Blocked
+                        </h4>
+                        <p className="sam-renewal-blocked-card__desc">
+                          The Business Confirmation team determined that Renewal
+                          is <strong>NOT REQUIRED</strong> for this case. In
+                          accordance with business governance rules, SAM members
+                          cannot trigger any subsequent review tasks (Legal
+                          Review, Business Approval, Finance Approval,
+                          Procurement). You can only complete this case saying
+                          Renewal Not Required.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="sam-btn sam-btn--complete-case sam-btn--complete-case-lg"
+                      onClick={() => setShowCompleteConfirmModal(true)}
+                      disabled={actionLoading || isCompletingCase}
+                    >
+                      ✓ Complete Case (Renewal Not Required)
+                    </button>
+                  </div>
+                ) : (
+                  <p className="sam-stage-desc">
+                    {effectiveBusinessConfirmationStatus === "CONFIRMED"
+                      ? "Choose single tasks to trigger individually, or select multiple tasks via the checkboxes to trigger all selected tasks at once. Any task that is triggered and in progress cannot be re-triggered until completed."
+                      : "These tasks are locked. You must first trigger Business Confirmation (Step 1) and receive confirmation before any of these tasks can be dispatched."}
+                  </p>
+                )}
 
                 {/* Bulk Trigger Toolbar */}
-                {effectiveBusinessConfirmationStatus === "CONFIRMED" && (
-                  <div className="sam-bulk-toolbar">
-                    <div className="sam-bulk-toolbar__left">
-                      <span className="sam-bulk-count">
-                        <strong>{selectedTasksToTrigger.length}</strong> of{" "}
-                        {availableTasksCount} available tasks selected
-                      </span>
-                      <button
-                        type="button"
-                        className="sam-btn-link"
-                        onClick={handleSelectAllRemaining}
-                        disabled={isCompleted || availableTasksCount === 0}
-                        title={
-                          availableTasksCount === 0
-                            ? "All remaining tasks are currently active and in progress"
-                            : "Select all remaining available tasks"
-                        }
-                      >
-                        Select All Available
-                      </button>
-                      <span className="sam-toolbar-divider">|</span>
-                      <button
-                        type="button"
-                        className="sam-btn-link"
-                        onClick={handleDeselectAllRemaining}
-                        disabled={
-                          isCompleted || selectedTasksToTrigger.length === 0
-                        }
-                      >
-                        Deselect All
-                      </button>
-                    </div>
+                {effectiveBusinessConfirmationStatus === "CONFIRMED" &&
+                  !isRenewalNotRequired && (
+                    <div className="sam-bulk-toolbar">
+                      <div className="sam-bulk-toolbar__left">
+                        <span className="sam-bulk-count">
+                          <strong>{selectedTasksToTrigger.length}</strong> of{" "}
+                          {availableTasksCount} available tasks selected
+                        </span>
+                        <button
+                          type="button"
+                          className="sam-btn-link"
+                          onClick={handleSelectAllRemaining}
+                          disabled={isCompleted || availableTasksCount === 0}
+                          title={
+                            availableTasksCount === 0
+                              ? "All remaining tasks are currently active and in progress"
+                              : "Select all remaining available tasks"
+                          }
+                        >
+                          Select All Available
+                        </button>
+                        <span className="sam-toolbar-divider">|</span>
+                        <button
+                          type="button"
+                          className="sam-btn-link"
+                          onClick={handleDeselectAllRemaining}
+                          disabled={
+                            isCompleted || selectedTasksToTrigger.length === 0
+                          }
+                        >
+                          Deselect All
+                        </button>
+                      </div>
 
-                    <div className="sam-bulk-toolbar__right">
-                      <button
-                        type="button"
-                        className="sam-btn sam-btn--bulk-trigger"
-                        onClick={handleTriggerBulk}
-                        disabled={
-                          isCompleted ||
-                          selectedTasksToTrigger.length === 0 ||
-                          triggeringTaskIds.length > 0 ||
-                          actionLoading
-                        }
-                      >
-                        {triggeringTaskIds.length > 0 &&
-                        selectedTasksToTrigger.length > 0
-                          ? "Triggering Selected Tasks…"
-                          : `⚡ Trigger Selected Tasks (${selectedTasksToTrigger.length})`}
-                      </button>
+                      <div className="sam-bulk-toolbar__right">
+                        <button
+                          type="button"
+                          className="sam-btn sam-btn--bulk-trigger"
+                          onClick={handleTriggerBulk}
+                          disabled={
+                            isCompleted ||
+                            selectedTasksToTrigger.length === 0 ||
+                            triggeringTaskIds.length > 0 ||
+                            actionLoading
+                          }
+                        >
+                          {triggeringTaskIds.length > 0 &&
+                          selectedTasksToTrigger.length > 0
+                            ? "Triggering Selected Tasks…"
+                            : `⚡ Trigger Selected Tasks (${selectedTasksToTrigger.length})`}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Remaining Tasks List */}
                 <div className="sam-task-cards-list">
@@ -2247,6 +2690,7 @@ export default function SamCaseDetail({
                     const isTaskDone = statusInfo.state === "COMPLETED";
                     const isLocked =
                       effectiveBusinessConfirmationStatus !== "CONFIRMED" ||
+                      isRenewalNotRequired ||
                       isCompleted;
 
                     return (
@@ -2264,9 +2708,11 @@ export default function SamCaseDetail({
                             title={
                               isActive
                                 ? `"${taskItem.title}" is currently in progress and cannot be selected for re-triggering until completed.`
-                                : isLocked
-                                  ? "Awaiting Business Confirmation"
-                                  : `Select "${taskItem.title}" for triggering`
+                                : isRenewalNotRequired
+                                  ? "Renewal Not Required: downstream tasks cannot be triggered."
+                                  : isLocked
+                                    ? "Awaiting Business Confirmation"
+                                    : `Select "${taskItem.title}" for triggering`
                             }
                           >
                             <input
@@ -2340,14 +2786,26 @@ export default function SamCaseDetail({
 
                         <div className="sam-task-action-card__right">
                           {isActive ? (
-                            <button
-                              type="button"
-                              className="sam-btn sam-btn--single-trigger sam-btn--disabled-active"
-                              disabled
-                              title={`"${taskItem.title}" is currently in progress. It cannot be re-triggered until completed.`}
-                            >
-                              {isTriggering ? "Triggering…" : "🔒 In Progress"}
-                            </button>
+                            <div className="sam-task-card-active-actions">
+                              <button
+                                type="button"
+                                className="sam-btn sam-btn--confirm-team"
+                                onClick={() =>
+                                  handleCompleteTeamTask(
+                                    statusInfo.task?.id,
+                                    taskItem.activityId,
+                                    taskItem.title
+                                  )
+                                }
+                                disabled={isCompleted || actionLoading}
+                                title={`Mark response received from ${taskItem.department} for "${taskItem.title}"`}
+                              >
+                                ✓ Mark Response Received
+                              </button>
+                              <span className="sam-task-status-tag--in-progress">
+                                {isTriggering ? "Triggering…" : "● In Progress"}
+                              </span>
+                            </div>
                           ) : (
                             <button
                               type="button"
@@ -2359,9 +2817,11 @@ export default function SamCaseDetail({
                               }
                               disabled={isLocked || isTriggering}
                               title={
-                                isTaskDone
-                                  ? `"${taskItem.title}" was completed. Click to trigger again.`
-                                  : `Trigger ${taskItem.title} individually`
+                                isRenewalNotRequired
+                                  ? "Renewal Not Required: downstream tasks cannot be triggered."
+                                  : isTaskDone
+                                    ? `"${taskItem.title}" was completed. Click to trigger again.`
+                                    : `Trigger ${taskItem.title} individually`
                               }
                             >
                               {isTaskDone ? "⚡ Trigger Again" : "Trigger Task"}
@@ -2404,8 +2864,9 @@ export default function SamCaseDetail({
                   Complete Case #{caseItem?.caseNumber || caseItem?.id}?
                 </h3>
                 <p className="sam-modal__subtitle">
-                  All open tasks are completed. Confirm to finalize and archive
-                  this case.
+                  {isRenewalNotRequired
+                    ? "Business Confirmation determined Renewal is Not Required. Confirm to finalize and archive this case."
+                    : "All open tasks are completed. Confirm to finalize and archive this case."}
                 </p>
               </div>
             </div>
@@ -2416,12 +2877,30 @@ export default function SamCaseDetail({
                 actions:
               </p>
               <ul className="sam-modal__checklist">
+                {isRenewalNotRequired && (
+                  <li>
+                    <span className="sam-modal__check-bullet">🛑</span>
+                    <span>
+                      <strong>Outcome - Renewal Not Required:</strong> Case is
+                      finalized with outcome: <code>Renewal Not Required</code>.
+                      Downstream review tasks remain bypassed.
+                    </span>
+                  </li>
+                )}
                 <li>
                   <span className="sam-modal__check-bullet">✓</span>
                   <span>
                     <strong>Update Case Status:</strong> Case status will be
                     permanently set to <code>COMPLETED</code> across the docket
                     and queue.
+                  </span>
+                </li>
+                <li>
+                  <span className="sam-modal__check-bullet">✓</span>
+                  <span>
+                    <strong>Complete SAM User Task:</strong> The SAM user review
+                    task (<code>UserTask_Sam</code>) will be marked as completed
+                    and preserved in the task ledger.
                   </span>
                 </li>
                 <li>

@@ -168,6 +168,13 @@ export default function Login() {
               >
                 sam@example.com (GROUP_SAM_TEAM)
               </button>
+              <button
+                type="button"
+                className="login__quick-btn"
+                onClick={() => handleQuickFill("biz.confirm@example.com")}
+              >
+                biz.confirm@example.com (GROUP_BUSINESS_CONFIRMATION)
+              </button>
             </div>
           </div>
 

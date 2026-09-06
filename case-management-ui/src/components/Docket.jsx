@@ -1,5 +1,38 @@
 import { useState, useMemo } from "react";
 
+function getDocketStatusModifier(status, isCompleted) {
+  if (isCompleted) return "completed";
+  const s = String(status || "")
+    .trim()
+    .toLowerCase();
+  if (!s || s === "open") return "open";
+  if (s.includes("in-progress") || s.includes("in progress"))
+    return "in-progress";
+  if (s.includes("send for business confirmation")) return "send-for-biz";
+  if (s.includes("business confirmation response received"))
+    return "biz-response";
+  if (s.includes("send for team")) return "send-for-team";
+  if (s.includes("team response received")) return "team-response";
+  if (s === "completed" || s === "closed") return "completed";
+  return "neutral";
+}
+
+function getDocketStatusLabel(status, isCompleted) {
+  if (isCompleted) return "Completed";
+  const s = String(status || "").trim();
+  const lower = s.toLowerCase();
+  if (lower.includes("business confirmation response received"))
+    return "Biz Response Recvd";
+  if (lower.includes("send for business confirmation"))
+    return "Send for Biz Conf";
+  if (lower.includes("team response received")) return "Team Response Recvd";
+  if (lower.includes("send for team")) return "Send for Team";
+  if (lower.includes("in-progress") || lower.includes("in progress"))
+    return "In-Progress";
+  if (lower === "open") return "Open";
+  return s || "Open";
+}
+
 export default function Docket({
   cases = [],
   selectedCaseId,
@@ -174,11 +207,13 @@ export default function Docket({
                       {c.caseNumber || `Case #${c.id}`}
                     </span>
                     <span
-                      className={`docket__item-status ${
-                        isCompleted ? "docket__item-status--completed" : ""
-                      }`}
+                      className={`docket__item-status docket__item-status--${getDocketStatusModifier(
+                        c.status,
+                        isCompleted
+                      )}`}
+                      title={c.status || "Open"}
                     >
-                      {isCompleted ? "COMPLETED" : c.status || "Open"}
+                      {getDocketStatusLabel(c.status, isCompleted)}
                     </span>
                   </div>
 

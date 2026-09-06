@@ -93,6 +93,31 @@ export const DEMO_GROUPS = [
         email: "taylor.sam@example.com"
       }
     ]
+  },
+  {
+    id: 3,
+    name: "GROUP_BUSINESS_CONFIRMATION",
+    description: "Business Confirmation Team",
+    role: {
+      id: 3,
+      name: "ROLE_BUSINESS_CONFIRMATION",
+      description:
+        "Business Confirmation Member reviews renewal prerequisites and validates business grounds."
+    },
+    members: [
+      {
+        id: 6,
+        firstName: "David",
+        lastName: "Miller",
+        email: "biz.confirm@example.com"
+      },
+      {
+        id: 7,
+        firstName: "Carol",
+        lastName: "Danvers",
+        email: "carol.biz@example.com"
+      }
+    ]
   }
 ];
 
@@ -317,7 +342,32 @@ export function getStoredActionsData(caseIdentifier) {
   try {
     const raw = sessionStorage.getItem(DEMO_ACTIONS_STORAGE_KEY);
     const map = raw ? JSON.parse(raw) : {};
-    return map[String(caseIdentifier)] || null;
+    const key = String(caseIdentifier);
+    if (map[key]) return map[key];
+
+    // Default mock SAM notes for demo cases
+    if (key === "CASE-2026-1002" || key === "102" || key === "demo-pi-1002") {
+      return {
+        samNotes:
+          "Urgent title deed verification required. Please review commercial grounds and determine whether renewal process is required for this facility.",
+        businessConfirmationStatus: "PENDING_CONFIRMATION"
+      };
+    }
+    if (key === "CASE-2026-1001" || key === "101" || key === "demo-pi-1001") {
+      return {
+        samNotes:
+          "Customer defaulted on Q3 payment cycle. Please evaluate whether renewal process is required before triggering any downstream operational tasks.",
+        businessConfirmationStatus: "PENDING_CONFIRMATION"
+      };
+    }
+    if (key === "CASE-2026-1004" || key === "104" || key === "demo-pi-1004") {
+      return {
+        samNotes:
+          "Escrow release terms under review. Confirm renewal requirements with the business stakeholder.",
+        businessConfirmationStatus: "PENDING_CONFIRMATION"
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -354,6 +404,15 @@ export const DEMO_TASKS_BY_PI = {
       processInstanceId: "demo-pi-1001",
       assignee: null,
       createTime: new Date(Date.now() - 1800000).toISOString()
+    },
+    {
+      id: "task-1001-biz",
+      name: "Business Confirmation",
+      taskDefinitionKey: "UserTask_BusinessConfirmation",
+      processInstanceId: "demo-pi-1001",
+      assignee: null,
+      candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
+      createTime: new Date(Date.now() - 900000).toISOString()
     }
   ],
   "demo-pi-1002": [
@@ -388,6 +447,7 @@ export const DEMO_TASKS_BY_PI = {
       taskDefinitionKey: "UserTask_BusinessConfirmation",
       processInstanceId: "demo-pi-1002",
       assignee: null,
+      candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
       createTime: new Date(Date.now() - 900000).toISOString()
     }
   ],
@@ -410,6 +470,25 @@ export const DEMO_TASKS_BY_PI = {
       createTime: new Date(Date.now() - 2700000).toISOString()
     }
   ],
+  "demo-pi-1004": [
+    {
+      id: "task-1004-sam",
+      name: "SAM Assessment Review",
+      taskDefinitionKey: "UserTask_Sam",
+      processInstanceId: "demo-pi-1004",
+      assignee: null,
+      createTime: new Date(Date.now() - 1800000).toISOString()
+    },
+    {
+      id: "task-1004-biz",
+      name: "Business Confirmation",
+      taskDefinitionKey: "UserTask_BusinessConfirmation",
+      processInstanceId: "demo-pi-1004",
+      assignee: "biz.confirm@example.com",
+      candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
+      createTime: new Date(Date.now() - 600000).toISOString()
+    }
+  ],
   "demo-pi-1005": [
     {
       id: "task-1005-legal",
@@ -425,6 +504,7 @@ export const DEMO_TASKS_BY_PI = {
       taskDefinitionKey: "UserTask_BusinessConfirmation",
       processInstanceId: "demo-pi-1005",
       assignee: "sam@example.com",
+      candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
       createTime: "2026-09-04T09:30:00Z"
     }
   ]
@@ -588,9 +668,15 @@ function findUserInGroups(groups, normalizedEmail) {
     return null;
   }
 
-  // Prioritize GROUP_BK or GROUP_SAM_TEAM if the user belongs to multiple groups
+  // Prioritize GROUP_BK, GROUP_BUSINESS_CONFIRMATION, or GROUP_SAM_TEAM if the user belongs to multiple groups
   const primaryGroup =
     matchingGroups.find((g) => g.name === "GROUP_BK") ||
+    matchingGroups.find(
+      (g) =>
+        g.name === "GROUP_BUSINESS_CONFIRMATION" ||
+        g.name === "GROUP_BIZ_CONFIRMATION" ||
+        (g.name || "").toUpperCase().includes("CONFIRM")
+    ) ||
     matchingGroups.find(
       (g) => g.name === "GROUP_SAM_TEAM" || g.name === "GROUP_SAM"
     ) ||
@@ -675,10 +761,12 @@ export async function setProcessVariables(processInstanceId, variables) {
       }
     );
   } catch (err) {
-    console.warn(
-      "Could not reach POST /variables on backend, storing in demo session:",
-      err
-    );
+    if (err.status !== 409) {
+      console.warn(
+        "Could not reach POST /variables on backend, storing in demo session:",
+        err
+      );
+    }
     setStoredDemoVars(processInstanceId, variables);
     return variables;
   }
@@ -784,7 +872,8 @@ export async function listCompletedTasks(processInstanceId) {
       )}&finished=true`
     );
     if (Array.isArray(result) && result.length > 0) {
-      return result.map((t) => ({
+      const validCompleted = result.filter((t) => t.deleteReason !== "deleted");
+      const mapped = validCompleted.map((t) => ({
         id: t.id,
         name: t.name,
         taskDefinitionKey: t.taskDefinitionKey,
@@ -792,8 +881,21 @@ export async function listCompletedTasks(processInstanceId) {
         assignee: t.assignee,
         createTime: t.startTime,
         endTime: t.endTime,
+        deleteReason: t.deleteReason,
         status: "COMPLETED"
       }));
+      const stored = getStoredDemoCompletedTasks(processInstanceId) || [];
+      stored.forEach((st) => {
+        if (
+          !mapped.some(
+            (m) =>
+              m.id === st.id || m.taskDefinitionKey === st.taskDefinitionKey
+          )
+        ) {
+          mapped.push(st);
+        }
+      });
+      return mapped;
     }
   } catch {
     // Camunda history endpoint not available or offline, fall through to demo
@@ -933,13 +1035,32 @@ export async function triggerActivity(
   options = {}
 ) {
   try {
-    return await request(
+    const res = await request(
       `/process-instances/${processInstanceId}/trigger-activity`,
       {
         method: "POST",
         body: JSON.stringify({ activityId })
       }
     );
+    if (options.caseId || options.caseNumber) {
+      const taskName = TASK_NAME_MAP[activityId] || activityId;
+      appendDemoAudit(options.caseId || options.caseNumber, {
+        id: Date.now(),
+        caseId: options.caseId
+          ? Number(options.caseId) || options.caseId
+          : null,
+        caseNumber: options.caseNumber || null,
+        action: "TASK_TRIGGERED",
+        status: options.status || "Open",
+        details: `Task '${taskName}' triggered by ${options.userName || "SAM user"}.${
+          options.notes ? ` Notes: "${options.notes}"` : ""
+        }`,
+        createdBy: options.userEmail || "sam@example.com",
+        createdAt: new Date().toISOString(),
+        camundaProcessInstanceId: processInstanceId
+      });
+    }
+    return res;
   } catch (err) {
     console.warn(
       `Could not trigger activity ${activityId} on backend, simulating in demo mode:`,
@@ -967,7 +1088,7 @@ export async function triggerActivity(
           : null,
         caseNumber: options.caseNumber || null,
         action: "TASK_TRIGGERED",
-        status: "Open",
+        status: options.status || "Open",
         details: `Task '${taskName}' triggered by ${options.userName || "SAM user"}.${
           options.notes ? ` Notes: "${options.notes}"` : ""
         }`,
@@ -981,6 +1102,92 @@ export async function triggerActivity(
   }
 }
 
+/**
+ * Updates the status of a case across:
+ * 1. Backend REST DB (PUT /api/cases/{caseId})
+ * 2. Camunda process instance variables (caseStatus, status)
+ * 3. Client session storage overrides
+ * 4. Appends audit log entry if requested
+ */
+export async function updateCaseStatus(
+  caseId,
+  status,
+  caseItem = {},
+  options = {}
+) {
+  const caseKey = caseItem?.caseNumber || caseId;
+  const processInstanceId = caseItem?.camundaProcessInstanceId;
+
+  // 1. Session storage override for fallback resilience
+  if (caseKey) {
+    setStoredDemoCaseStatus(caseKey, status);
+  }
+  if (caseId && caseKey && String(caseId) !== String(caseKey)) {
+    setStoredDemoCaseStatus(caseId, status);
+  }
+
+  // 2. Camunda Process Instance variables
+  if (processInstanceId) {
+    try {
+      await setProcessVariables(processInstanceId, {
+        caseStatus: status,
+        status: status
+      });
+    } catch (e) {
+      console.warn("Could not set process variables for case status:", e);
+    }
+  }
+
+  // 3. Backend DB update via PUT /api/cases/{id} (or PATCH fallback)
+  if (caseId) {
+    const payload = {
+      title: caseItem?.title || `Case #${caseKey}`,
+      description: caseItem?.description || "",
+      status: status
+    };
+
+    try {
+      await request(`/api/cases/${encodeURIComponent(caseId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+    } catch (putErr) {
+      try {
+        await request(`/api/cases/${encodeURIComponent(caseId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status })
+        });
+      } catch {
+        console.warn(
+          `Backend update status failed for case ${caseId}:`,
+          putErr
+        );
+      }
+    }
+  }
+
+  // 4. Record audit entry in demo store if specified
+  if (options.recordAudit && caseKey) {
+    const auditEntry = {
+      id: Date.now(),
+      caseId: caseId ? Number(caseId) || caseId : null,
+      caseNumber: caseItem?.caseNumber || null,
+      action: options.auditAction || "CASE_UPDATED",
+      status: status,
+      details: options.auditDetails || `Case status updated to '${status}'.`,
+      createdBy: options.userName || options.userEmail || "SAM user",
+      createdAt: new Date().toISOString(),
+      camundaProcessInstanceId: processInstanceId || null
+    };
+    appendDemoAudit(caseKey, auditEntry);
+    if (caseId && caseKey && String(caseId) !== String(caseKey)) {
+      appendDemoAudit(caseId, auditEntry);
+    }
+  }
+
+  return { id: caseId, status };
+}
+
 /** Closes a case by cancelling its case-tasks sub-process (SAM plus anything else open). */
 export function closeCase(processInstanceId) {
   return request(`/process-instances/${processInstanceId}/cancel-activity`, {
@@ -992,14 +1199,17 @@ export function closeCase(processInstanceId) {
 /**
  * Completes a case:
  * 1. Completes/cancels the Camunda process instance.
- * 2. Updates the case status on backend / session storage to COMPLETED.
+ * 2. Updates the case status on backend / session storage to Completed.
  * 3. Appends a CASE_COMPLETED entry in the audit trail.
  */
 export async function completeCase({
   caseId,
   caseNumber,
   processInstanceId,
-  user
+  user,
+  title,
+  description,
+  details
 }) {
   const caseKey = caseNumber || caseId;
   const userDisplay =
@@ -1007,96 +1217,305 @@ export async function completeCase({
       ? `${user.firstName} ${user.lastName}`.trim()
       : user?.email || "SAM User";
 
-  // 1. Finalize Camunda Process Instance
-  if (processInstanceId) {
-    try {
-      await closeCase(processInstanceId);
-    } catch (err) {
-      console.warn(
-        `Backend closeCase failed for ${processInstanceId}, trying fallback:`,
-        err
-      );
-    }
+  const userEmail = user?.email || "sam@example.com";
 
-    // Try engine-rest delete as well if available
-    try {
-      await request(
-        `/engine-rest/process-instance/${encodeURIComponent(processInstanceId)}`,
-        {
-          method: "DELETE"
-        }
-      );
-    } catch {
-      // Ignored if engine-rest is not available or already cancelled
-    }
-
-    // Update demo process status & clear open demo tasks
-    markProcessCompletedInDemo(processInstanceId);
-  }
-
-  // 2. Update Case status in session storage and on backend
-  setStoredDemoCaseStatus(caseKey, "COMPLETED");
-  if (caseId && caseNumber && caseId !== caseNumber) {
-    setStoredDemoCaseStatus(caseId, "COMPLETED");
-  }
+  // 0. Resolve processInstanceId, caseId, title, and description if missing
+  let resolvedPiId = processInstanceId;
+  let resolvedCaseId = caseId;
+  let resolvedTitle = title;
+  let resolvedDescription = description;
 
   try {
-    if (caseId) {
-      await request(`/api/cases/${encodeURIComponent(caseId)}/complete`, {
-        method: "POST"
-      });
+    if (!resolvedPiId || !resolvedTitle || !resolvedCaseId) {
+      const allCases = await getCases();
+      const found = allCases.find(
+        (c) =>
+          (caseId && String(c.id) === String(caseId)) ||
+          (caseNumber && String(c.caseNumber) === String(caseNumber)) ||
+          (resolvedPiId && c.camundaProcessInstanceId === resolvedPiId)
+      );
+      if (found) {
+        if (!resolvedPiId) resolvedPiId = found.camundaProcessInstanceId;
+        if (!resolvedCaseId) resolvedCaseId = found.id;
+        if (!resolvedTitle) resolvedTitle = found.title;
+        if (resolvedDescription === undefined)
+          resolvedDescription = found.description;
+      }
     }
-  } catch {
+  } catch {}
+
+  if (!resolvedTitle) {
+    resolvedTitle = `Case #${caseKey || "Record"}`;
+  }
+
+  // 1. Complete the SAM user task (UserTask_Sam) for this case
+  if (resolvedPiId) {
     try {
-      if (caseId) {
-        await request(`/api/cases/${encodeURIComponent(caseId)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ status: "COMPLETED" })
+      // Direct query to backend tasks endpoint
+      const resTasks = await request(
+        `/tasks?processInstanceId=${encodeURIComponent(resolvedPiId)}`
+      ).catch(() => []);
+      const backendTasks = Array.isArray(resTasks) ? resTasks : [];
+
+      // Direct query to engine-rest tasks endpoint
+      const engineTasks = await request(
+        `/engine-rest/task?processInstanceId=${encodeURIComponent(resolvedPiId)}`
+      ).catch(() => []);
+      const directEngineTasks = Array.isArray(engineTasks) ? engineTasks : [];
+
+      // Combine open tasks
+      const mergedOpenTasks = [...backendTasks];
+      directEngineTasks.forEach((et) => {
+        if (!mergedOpenTasks.some((m) => m.id === et.id)) {
+          mergedOpenTasks.push(et);
+        }
+      });
+
+      // Filter SAM tasks
+      let samTasks = mergedOpenTasks.filter(
+        (t) =>
+          t.taskDefinitionKey === "UserTask_Sam" ||
+          (t.taskDefinitionKey || "").toLowerCase().includes("sam") ||
+          (t.name || "").trim().toUpperCase() === "SAM" ||
+          (t.name || "").toLowerCase().includes("sam") ||
+          (t.candidateGroup || "").toUpperCase().includes("SAM") ||
+          (Array.isArray(t.candidateGroups) &&
+            t.candidateGroups.some((g) => g.toUpperCase().includes("SAM"))) ||
+          (t.id && t.id.toLowerCase().includes("-sam"))
+      );
+
+      // If not found, also query by taskDefinitionKey=UserTask_Sam directly
+      if (samTasks.length === 0) {
+        const allSamTasks = await request(
+          `/tasks?taskDefinitionKey=UserTask_Sam`
+        ).catch(() => []);
+        if (Array.isArray(allSamTasks)) {
+          const matching = allSamTasks.filter(
+            (t) => t.processInstanceId === resolvedPiId
+          );
+          if (matching.length > 0) {
+            samTasks = matching;
+          }
+        }
+      }
+
+      const plainVars = {
+        caseStatus: "Completed",
+        status: "Completed",
+        completedBy: userEmail,
+        completedAt: new Date().toISOString()
+      };
+
+      for (const st of samTasks) {
+        let completedOk = false;
+        try {
+          await completeTask(st.id, plainVars);
+          completedOk = true;
+        } catch (err) {
+          console.warn(`Could not complete SAM task ${st.id} via API:`, err);
+        }
+
+        if (!completedOk) {
+          try {
+            await request(
+              `/engine-rest/task/${encodeURIComponent(st.id)}/complete`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  variables: {
+                    caseStatus: { value: "Completed", type: "String" },
+                    status: { value: "Completed", type: "String" }
+                  }
+                })
+              }
+            );
+            completedOk = true;
+          } catch {}
+        }
+
+        appendStoredDemoCompletedTask(resolvedPiId, {
+          id: st.id,
+          name: st.name || "SAM Investigation Review",
+          taskDefinitionKey: st.taskDefinitionKey || "UserTask_Sam",
+          processInstanceId: resolvedPiId,
+          assignee: st.assignee || userEmail,
+          endTime: new Date().toISOString(),
+          status: "COMPLETED"
         });
+
+        const samAudit = {
+          id: Date.now() - 1,
+          caseId: resolvedCaseId
+            ? Number(resolvedCaseId) || resolvedCaseId
+            : null,
+          caseNumber: caseNumber || null,
+          action: "TASK_COMPLETED",
+          status: "Completed",
+          details: `SAM user task '${st.name || "SAM Investigation Review"}' (UserTask_Sam) completed by ${userDisplay} (${userEmail}).`,
+          createdBy: userDisplay,
+          createdAt: new Date().toISOString(),
+          camundaProcessInstanceId: resolvedPiId || null
+        };
+        appendDemoAudit(caseKey, samAudit);
+        if (resolvedCaseId && String(resolvedCaseId) !== String(caseKey)) {
+          appendDemoAudit(resolvedCaseId, samAudit);
+        }
+      }
+
+      // If openTasks didn't have an active SAM task, also record demo completed task
+      if (samTasks.length === 0) {
+        const defaultTasks = DEMO_TASKS_BY_PI[resolvedPiId] || [];
+        const defaultSam = defaultTasks.find(
+          (t) =>
+            t.taskDefinitionKey === "UserTask_Sam" ||
+            (t.name || "").toLowerCase().includes("sam")
+        );
+        const samId = defaultSam?.id || `task-${resolvedPiId}-sam`;
+        const samName = defaultSam?.name || "SAM Investigation Review";
+
+        appendStoredDemoCompletedTask(resolvedPiId, {
+          id: samId,
+          name: samName,
+          taskDefinitionKey: "UserTask_Sam",
+          processInstanceId: resolvedPiId,
+          assignee: defaultSam?.assignee || userEmail,
+          endTime: new Date().toISOString(),
+          status: "COMPLETED"
+        });
+
+        const samAudit = {
+          id: Date.now() - 1,
+          caseId: resolvedCaseId
+            ? Number(resolvedCaseId) || resolvedCaseId
+            : null,
+          caseNumber: caseNumber || null,
+          action: "TASK_COMPLETED",
+          status: "Completed",
+          details: `SAM user task '${samName}' (UserTask_Sam) completed by ${userDisplay} (${userEmail}).`,
+          createdBy: userDisplay,
+          createdAt: new Date().toISOString(),
+          camundaProcessInstanceId: resolvedPiId || null
+        };
+        appendDemoAudit(caseKey, samAudit);
+        if (resolvedCaseId && String(resolvedCaseId) !== String(caseKey)) {
+          appendDemoAudit(resolvedCaseId, samAudit);
+        }
       }
     } catch (e) {
-      console.warn(
-        "Backend update case status failed, using session state:",
-        e
-      );
+      console.warn("Error completing SAM user task during completeCase:", e);
+    }
+
+    // Check if process instance is still active; only cancel-activity if it is still running
+    try {
+      const pStatus = await getCaseStatus(resolvedPiId).catch(() => null);
+      if (pStatus && pStatus.state === "ACTIVE") {
+        await closeCase(resolvedPiId).catch(() => {});
+      }
+    } catch {}
+
+    // Update demo process status & clear open demo tasks
+    markProcessCompletedInDemo(resolvedPiId);
+  }
+
+  // 2. Update Case status in session storage and process variables
+  setStoredDemoCaseStatus(caseKey, "Completed");
+  if (
+    resolvedCaseId &&
+    caseNumber &&
+    String(resolvedCaseId) !== String(caseNumber)
+  ) {
+    setStoredDemoCaseStatus(resolvedCaseId, "Completed");
+  }
+
+  if (resolvedPiId) {
+    try {
+      await setProcessVariables(resolvedPiId, {
+        caseStatus: "Completed",
+        status: "Completed"
+      });
+    } catch {}
+  }
+
+  // 3. Update Case record in backend DB (PUT /api/cases/{id})
+  if (resolvedCaseId) {
+    const putPayload = {
+      title: resolvedTitle,
+      description: resolvedDescription || "",
+      status: "Completed"
+    };
+
+    try {
+      await request(`/api/cases/${encodeURIComponent(resolvedCaseId)}`, {
+        method: "PUT",
+        body: JSON.stringify(putPayload)
+      });
+    } catch (putErr) {
+      console.warn("Backend PUT /api/cases failed, trying fallback:", putErr);
+      try {
+        await request(
+          `/api/cases/${encodeURIComponent(resolvedCaseId)}/complete`,
+          {
+            method: "POST"
+          }
+        );
+      } catch {}
     }
   }
 
-  // 3. Log Audit History entry
+  // 4. Log Audit History entry
   const auditEntry = {
     id: Date.now(),
-    caseId: caseId ? Number(caseId) || caseId : null,
+    caseId: resolvedCaseId ? Number(resolvedCaseId) || resolvedCaseId : null,
     caseNumber: caseNumber || null,
     action: "CASE_COMPLETED",
-    status: "COMPLETED",
-    details: `Case #${caseKey} marked as COMPLETED by ${userDisplay}. Workflow process instance finalized.`,
+    status: "Completed",
+    details:
+      details ||
+      `Case #${caseKey} marked as Completed by ${userDisplay}. SAM user task completed and workflow process instance finalized.`,
     createdBy: userDisplay,
     createdAt: new Date().toISOString(),
-    camundaProcessInstanceId: processInstanceId || null
+    camundaProcessInstanceId: resolvedPiId || null
   };
 
   if (caseKey) {
     appendDemoAudit(caseKey, auditEntry);
   }
-  if (caseId && caseNumber && caseId !== caseNumber) {
-    appendDemoAudit(caseId, auditEntry);
+  if (
+    resolvedCaseId &&
+    caseNumber &&
+    String(resolvedCaseId) !== String(caseKey)
+  ) {
+    appendDemoAudit(resolvedCaseId, auditEntry);
   }
 
-  return { success: true, status: "COMPLETED", auditEntry };
+  return { success: true, status: "Completed", auditEntry };
 }
 
 /** Completes a task, with optional variables. */
 export async function completeTask(taskId, variables) {
+  let varsToSend = variables;
+  if (variables && variables.variables !== undefined) {
+    varsToSend = variables.variables;
+  }
   try {
     return await request(`/tasks/${taskId}/complete`, {
       method: "POST",
-      body: variables ? JSON.stringify({ variables }) : undefined
+      body: varsToSend ? JSON.stringify({ variables: varsToSend }) : undefined
     });
   } catch (err) {
     console.warn(
-      `Could not complete task ${taskId} on backend, updating demo tasks:`,
+      `Could not complete task ${taskId} on backend, trying fallback:`,
       err
     );
+    try {
+      return await request(
+        `/engine-rest/task/${encodeURIComponent(taskId)}/complete`,
+        {
+          method: "POST",
+          body: varsToSend ? JSON.stringify({ variables: varsToSend }) : "{}"
+        }
+      );
+    } catch {}
     try {
       const raw = sessionStorage.getItem(DEMO_TASKS_STORAGE_KEY);
       const map = raw ? JSON.parse(raw) : {};
@@ -1143,4 +1562,319 @@ export function assignTask(taskId, userId) {
 /** Clears a task's assignee. */
 export function unassignTask(taskId) {
   return request(`/tasks/${taskId}/unassign`, { method: "POST" });
+}
+
+/**
+ * Fetches all Business Confirmation user tasks across all cases:
+ * 1. Checks Camunda tasks / demo tasks for UserTask_BusinessConfirmation
+ * 2. Merges with linked case metadata, case owner, and SAM user comments.
+ */
+export async function getBusinessConfirmationTasks({
+  includeCompleted = true
+} = {}) {
+  const cases = await getCases();
+  const completedPis = new Set(getStoredCompletedProcesses());
+  const allBizTasks = [];
+  const seenTaskIds = new Set();
+
+  for (const c of cases) {
+    const piId = c.camundaProcessInstanceId;
+    if (!piId) continue;
+
+    const caseKey = c.caseNumber || c.id || piId;
+    const actionsData = getStoredActionsData(caseKey) || {};
+    const isProcCompleted = completedPis.has(piId);
+
+    // 1. Fetch open tasks for this case
+    if (!isProcCompleted) {
+      const openTasks = await listTasks(piId);
+      const bizOpen = openTasks.filter(
+        (t) =>
+          t.taskDefinitionKey === "UserTask_BusinessConfirmation" ||
+          t.candidateGroup === "GROUP_BUSINESS_CONFIRMATION" ||
+          (Array.isArray(t.candidateGroups) &&
+            t.candidateGroups.includes("GROUP_BUSINESS_CONFIRMATION")) ||
+          (t.name || "").toLowerCase().includes("business confirmation")
+      );
+
+      bizOpen.forEach((t) => {
+        if (!seenTaskIds.has(t.id)) {
+          seenTaskIds.add(t.id);
+          allBizTasks.push({
+            ...t,
+            name: "Business Confirmation",
+            taskDefinitionKey: "UserTask_BusinessConfirmation",
+            candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
+            caseId: c.id,
+            caseNumber: c.caseNumber || `Case #${c.id}`,
+            caseTitle: c.title || "Business Confirmation Review",
+            caseDescription: c.description || "",
+            caseStatus: c.status || "Open",
+            caseOwner: c.caseOwner || null,
+            caseCreatedAt: c.createdAt || t.createTime,
+            samNotes: actionsData.samNotes || "",
+            status: "OPEN"
+          });
+        }
+      });
+    }
+
+    // 2. Fetch completed tasks if requested
+    if (includeCompleted) {
+      const completedTasks = await listCompletedTasks(piId);
+      const bizCompleted = completedTasks.filter(
+        (t) =>
+          t.taskDefinitionKey === "UserTask_BusinessConfirmation" ||
+          t.candidateGroup === "GROUP_BUSINESS_CONFIRMATION" ||
+          (Array.isArray(t.candidateGroups) &&
+            t.candidateGroups.includes("GROUP_BUSINESS_CONFIRMATION")) ||
+          (t.name || "").toLowerCase().includes("business confirmation")
+      );
+
+      bizCompleted.forEach((t) => {
+        if (!seenTaskIds.has(t.id)) {
+          seenTaskIds.add(t.id);
+          allBizTasks.push({
+            ...t,
+            name: "Business Confirmation",
+            taskDefinitionKey: "UserTask_BusinessConfirmation",
+            candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
+            caseId: c.id,
+            caseNumber: c.caseNumber || `Case #${c.id}`,
+            caseTitle: c.title || "Business Confirmation Review",
+            caseDescription: c.description || "",
+            caseStatus: c.status || "Completed",
+            caseOwner: c.caseOwner || null,
+            caseCreatedAt: c.createdAt || t.createTime,
+            samNotes: actionsData.samNotes || "",
+            status: "COMPLETED",
+            decision:
+              t.decision ||
+              actionsData.businessConfirmationResponse ||
+              actionsData.renewalProcessDecision ||
+              null,
+            comments: t.comments || actionsData.businessConfirmationNotes || ""
+          });
+        }
+      });
+    }
+  }
+
+  // Sort: open tasks first, then newest first
+  allBizTasks.sort((a, b) => {
+    if (a.status !== b.status) {
+      return a.status === "OPEN" ? -1 : 1;
+    }
+    const timeA = new Date(a.createTime || a.caseCreatedAt || 0).getTime();
+    const timeB = new Date(b.createTime || b.caseCreatedAt || 0).getTime();
+    return timeB - timeA;
+  });
+
+  return allBizTasks;
+}
+
+/**
+ * Claims a Business Confirmation task for the logged-in user.
+ * Assigns the task in Camunda, updates session storage, and logs an audit trail record.
+ */
+export async function claimBusinessConfirmationTask({
+  taskId,
+  userEmail,
+  userName,
+  caseIdentifier,
+  caseId,
+  processInstanceId
+}) {
+  if (!taskId) throw new Error("Task ID is required.");
+  const email = (userEmail || "").trim();
+
+  // 1. Backend assignment attempt
+  try {
+    await assignTask(taskId, email);
+  } catch (err) {
+    console.warn(`Could not assign task ${taskId} on backend:`, err);
+  }
+
+  // 2. Update session storage demo tasks
+  try {
+    const raw = sessionStorage.getItem(DEMO_TASKS_STORAGE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    let foundTask = false;
+    for (const pi of Object.keys(map)) {
+      if (Array.isArray(map[pi])) {
+        map[pi] = map[pi].map((t) => {
+          if (t.id === taskId) {
+            foundTask = true;
+            return { ...t, assignee: email };
+          }
+          return t;
+        });
+      }
+    }
+    if (!foundTask) {
+      for (const [pi, defaultTasks] of Object.entries(DEMO_TASKS_BY_PI)) {
+        if (!map[pi]) map[pi] = [...defaultTasks];
+        map[pi] = map[pi].map((t) => {
+          if (t.id === taskId) {
+            return { ...t, assignee: email };
+          }
+          return t;
+        });
+      }
+    }
+    sessionStorage.setItem(DEMO_TASKS_STORAGE_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.warn("Failed updating demo task assignee in session:", e);
+  }
+
+  // 3. Record audit trail entry
+  const caseKey = caseIdentifier || caseId;
+  if (caseKey) {
+    const auditEntry = {
+      id: Date.now(),
+      caseId: caseId ? Number(caseId) || caseId : null,
+      caseNumber: caseIdentifier || null,
+      action: "TASK_CLAIMED",
+      status: "In-Progress",
+      details: `Business Confirmation task claimed by ${userName || email} (${email}) for GROUP_BUSINESS_CONFIRMATION.`,
+      createdBy: userName || email,
+      createdAt: new Date().toISOString(),
+      camundaProcessInstanceId: processInstanceId || null
+    };
+    appendDemoAudit(caseKey, auditEntry);
+    if (caseId && String(caseId) !== String(caseKey)) {
+      appendDemoAudit(caseId, auditEntry);
+    }
+  }
+
+  return { success: true, taskId, assignee: email };
+}
+
+/**
+ * Completes a Business Confirmation task:
+ * 1. Completes Camunda user task (UserTask_BusinessConfirmation)
+ * 2. Saves process variables: renewalRequired, businessConfirmationResponse, businessConfirmationNotes, businessConfirmationStatus: "CONFIRMED", businessConfirmationGroup: "GROUP_BUSINESS_CONFIRMATION"
+ * 3. Updates session store actions data
+ * 4. Logs audit entry: BUSINESS_CONFIRMATION_COMPLETED with decision and review notes
+ * 5. Updates case status (to "Business Confirmation Response Received" or "Business Confirmation - Renewal Not Required")
+ */
+export async function completeBusinessConfirmationTask({
+  taskId,
+  processInstanceId,
+  caseId,
+  caseNumber,
+  caseItem,
+  user,
+  renewalRequired,
+  comments = ""
+}) {
+  const caseKey = caseNumber || caseId;
+  const userDisplay =
+    user?.firstName && user?.lastName
+      ? `${user.firstName} ${user.lastName}`.trim()
+      : user?.email || "Business Confirmation Specialist";
+  const userEmail = user?.email || "biz.confirm@example.com";
+
+  const decisionCode = renewalRequired
+    ? "RENEWAL_REQUIRED"
+    : "RENEWAL_NOT_REQUIRED";
+  const decisionLabel = renewalRequired
+    ? "Renewal Required"
+    : "Renewal Not Required";
+  const newStatus = renewalRequired
+    ? "Business Confirmation Response Received"
+    : "Business Confirmation - Renewal Not Required";
+
+  // 1. Complete Camunda task
+  if (taskId) {
+    try {
+      await completeTask(taskId, {
+        renewalRequired: { value: Boolean(renewalRequired), type: "Boolean" },
+        businessConfirmationResponse: { value: decisionCode, type: "String" },
+        renewalProcessDecision: { value: decisionCode, type: "String" },
+        businessConfirmationNotes: { value: comments.trim(), type: "String" },
+        businessConfirmationGroup: {
+          value: "GROUP_BUSINESS_CONFIRMATION",
+          type: "String"
+        }
+      });
+    } catch (err) {
+      console.warn(`Could not complete task ${taskId} via API:`, err);
+    }
+  }
+
+  // 2. Set Process Variables in Camunda
+  if (processInstanceId) {
+    try {
+      await setProcessVariables(processInstanceId, {
+        renewalRequired: Boolean(renewalRequired),
+        businessConfirmationResponse: decisionCode,
+        renewalProcessDecision: decisionCode,
+        businessConfirmationNotes: comments.trim(),
+        businessConfirmationGroup: "GROUP_BUSINESS_CONFIRMATION",
+        businessConfirmationStatus: "CONFIRMED",
+        caseStatus: newStatus,
+        status: newStatus
+      });
+    } catch (e) {
+      console.warn("Could not set process variables on completion:", e);
+    }
+  }
+
+  // 3. Update Stored Actions Data in session store
+  if (caseKey) {
+    setStoredActionsData(caseKey, {
+      renewalRequired: Boolean(renewalRequired),
+      businessConfirmationResponse: decisionCode,
+      renewalProcessDecision: decisionCode,
+      businessConfirmationNotes: comments.trim(),
+      businessConfirmationStatus: "CONFIRMED",
+      businessConfirmationGroup: "GROUP_BUSINESS_CONFIRMATION",
+      businessConfirmationCompletedBy: userDisplay,
+      businessConfirmationCompletedByEmail: userEmail,
+      businessConfirmationCompletedAt: new Date().toISOString()
+    });
+  }
+
+  // 4. Update Case Status in DB and session overrides
+  await updateCaseStatus(
+    caseId,
+    newStatus,
+    caseItem || {
+      id: caseId,
+      caseNumber,
+      camundaProcessInstanceId: processInstanceId
+    },
+    {
+      userName: userDisplay,
+      userEmail,
+      recordAudit: true,
+      auditAction: "BUSINESS_CONFIRMATION_COMPLETED",
+      auditDetails: `Business Confirmation completed by ${userDisplay} (${userEmail}) for GROUP_BUSINESS_CONFIRMATION. Decision: ${decisionLabel}.${
+        comments.trim() ? ` Comments: "${comments.trim()}"` : ""
+      }`
+    }
+  );
+
+  // 5. Ensure completed demo task is moved to completed tasks
+  if (processInstanceId && taskId) {
+    appendStoredDemoCompletedTask(processInstanceId, {
+      id: taskId,
+      name: "Business Confirmation",
+      taskDefinitionKey: "UserTask_BusinessConfirmation",
+      processInstanceId,
+      assignee: userEmail,
+      endTime: new Date().toISOString(),
+      status: "COMPLETED",
+      decision: decisionCode,
+      comments: comments.trim()
+    });
+  }
+
+  return {
+    success: true,
+    taskId,
+    decision: decisionCode,
+    status: newStatus
+  };
 }

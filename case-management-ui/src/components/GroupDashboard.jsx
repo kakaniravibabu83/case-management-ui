@@ -1,16 +1,22 @@
 import { useAuth } from "../context/AuthContext";
 
-export default function GroupDashboard({ onNavigateToDocket }) {
-  const { user, group, role, allGroups } = useAuth();
+export default function GroupDashboard() {
+  const { user, group, role } = useAuth();
   const isBkGroup = group?.name === "GROUP_BK";
+  const isBizGroup =
+    group?.name === "GROUP_BUSINESS_CONFIRMATION" ||
+    (group?.name || "").toUpperCase().includes("CONFIRM");
 
   return (
     <div className="group-dashboard">
       <div className="group-dashboard__banner">
         <span className="group-dashboard__eyebrow">Group Portal</span>
-        <h1 className="group-dashboard__title">{group?.name || "Team Workspace"}</h1>
+        <h1 className="group-dashboard__title">
+          {group?.name || "Team Workspace"}
+        </h1>
         <p className="group-dashboard__desc">
-          {group?.description || "Collaborative case workspace scoped to your team's role."}
+          {group?.description ||
+            "Collaborative case workspace scoped to your team's role."}
         </p>
       </div>
 
@@ -18,9 +24,12 @@ export default function GroupDashboard({ onNavigateToDocket }) {
         <div className="group-dashboard__card">
           <h2 className="group-dashboard__card-title">Assigned Role</h2>
           <div className="group-dashboard__role-info">
-            <span className="group-dashboard__role-badge">{role?.name || "General"}</span>
+            <span className="group-dashboard__role-badge">
+              {role?.name || "General"}
+            </span>
             <p className="group-dashboard__role-desc">
-              {role?.description || "Role permissions and responsibilities assigned to this group."}
+              {role?.description ||
+                "Role permissions and responsibilities assigned to this group."}
             </p>
           </div>
         </div>
@@ -31,31 +40,104 @@ export default function GroupDashboard({ onNavigateToDocket }) {
             {isBkGroup ? (
               <>
                 <li>
-                  <span className="group-dashboard__check" aria-hidden="true">✓</span>
-                  <span><strong>Case Creation:</strong> Authorized to open new cases via the left navigation button.</span>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Case Creation:</strong> Authorized to open new cases
+                    via the left navigation button.
+                  </span>
                 </li>
                 <li>
-                  <span className="group-dashboard__check" aria-hidden="true">✓</span>
-                  <span><strong>Docket Management:</strong> Full access to open and monitor case process instances.</span>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Docket Management:</strong> Full access to open and
+                    monitor case process instances.
+                  </span>
                 </li>
                 <li>
-                  <span className="group-dashboard__check" aria-hidden="true">✓</span>
-                  <span><strong>Task Triggering:</strong> Can trigger review activities and assign members.</span>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Task Triggering:</strong> Can trigger review
+                    activities and assign members.
+                  </span>
+                </li>
+              </>
+            ) : isBizGroup ? (
+              <>
+                <li>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Business Confirmation:</strong> Authorized to claim
+                    and execute review tasks for{" "}
+                    <strong>GROUP_BUSINESS_CONFIRMATION</strong>.
+                  </span>
+                </li>
+                <li>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Renewal Evaluation:</strong> Validate business
+                    grounds and determine whether the Renewal Process is
+                    required or not required.
+                  </span>
+                </li>
+                <li>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Downstream Workflow Gating:</strong> Submitting
+                    renewal determination controls whether downstream tasks
+                    unlock for SAM.
+                  </span>
+                </li>
+                <li className="group-dashboard__capability--restricted">
+                  <span className="group-dashboard__cross" aria-hidden="true">
+                    ✕
+                  </span>
+                  <span>
+                    <strong>Case Creation:</strong> Restricted to Backoffice
+                    (GROUP_BK) officers only.
+                  </span>
                 </li>
               </>
             ) : (
               <>
                 <li>
-                  <span className="group-dashboard__check" aria-hidden="true">✓</span>
-                  <span><strong>Case Review & Execution:</strong> Authorized to claim, execute, and complete tasks assigned to {group?.name}.</span>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Case Review & Execution:</strong> Authorized to
+                    claim, execute, and complete tasks assigned to {group?.name}
+                    .
+                  </span>
                 </li>
                 <li>
-                  <span className="group-dashboard__check" aria-hidden="true">✓</span>
-                  <span><strong>Task Ledger:</strong> View active case stages and submit task outcomes.</span>
+                  <span className="group-dashboard__check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span>
+                    <strong>Task Ledger:</strong> View active case stages and
+                    submit task outcomes.
+                  </span>
                 </li>
                 <li className="group-dashboard__capability--restricted">
-                  <span className="group-dashboard__cross" aria-hidden="true">✕</span>
-                  <span><strong>Case Creation:</strong> Restricted to Backoffice (GROUP_BK) officers only.</span>
+                  <span className="group-dashboard__cross" aria-hidden="true">
+                    ✕
+                  </span>
+                  <span>
+                    <strong>Case Creation:</strong> Restricted to Backoffice
+                    (GROUP_BK) officers only.
+                  </span>
                 </li>
               </>
             )}
@@ -63,22 +145,30 @@ export default function GroupDashboard({ onNavigateToDocket }) {
         </div>
 
         <div className="group-dashboard__card group-dashboard__card--full">
-          <h2 className="group-dashboard__card-title">Signed-in User Information</h2>
+          <h2 className="group-dashboard__card-title">
+            Signed-in User Information
+          </h2>
           <div className="group-dashboard__user-meta">
             <div>
               <span className="group-dashboard__meta-label">Full Name:</span>
-              <span className="group-dashboard__meta-value">{user?.firstName} {user?.lastName}</span>
+              <span className="group-dashboard__meta-value">
+                {user?.firstName} {user?.lastName}
+              </span>
             </div>
             <div>
               <span className="group-dashboard__meta-label">Email:</span>
               <span className="group-dashboard__meta-value">{user?.email}</span>
             </div>
             <div>
-              <span className="group-dashboard__meta-label">System User ID:</span>
+              <span className="group-dashboard__meta-label">
+                System User ID:
+              </span>
               <span className="group-dashboard__meta-value">#{user?.id}</span>
             </div>
             <div>
-              <span className="group-dashboard__meta-label">Current Group:</span>
+              <span className="group-dashboard__meta-label">
+                Current Group:
+              </span>
               <span className="group-dashboard__meta-value">{group?.name}</span>
             </div>
           </div>
@@ -87,4 +177,3 @@ export default function GroupDashboard({ onNavigateToDocket }) {
     </div>
   );
 }
-

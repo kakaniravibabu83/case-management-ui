@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { authenticateWithGroups } from "../api/client";
 
 const STORAGE_KEY = "casework_auth_session";
@@ -9,7 +9,8 @@ export function AuthProvider({ children }) {
   const [authData, setAuthData] = useState(() => {
     try {
       const stored =
-        localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
+        localStorage.getItem(STORAGE_KEY) ||
+        sessionStorage.getItem(STORAGE_KEY);
       if (stored) {
         return JSON.parse(stored);
       }
@@ -68,9 +69,9 @@ export function AuthProvider({ children }) {
         group: {
           id: targetGroup.id,
           name: targetGroup.name,
-          description: targetGroup.description,
+          description: targetGroup.description
         },
-        role: targetGroup.role,
+        role: targetGroup.role
       };
       setAuthData(updated);
       try {
@@ -96,7 +97,7 @@ export function AuthProvider({ children }) {
     error,
     login,
     logout,
-    switchGroup,
+    switchGroup
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -109,4 +110,3 @@ export function useAuth() {
   }
   return context;
 }
-
