@@ -1170,12 +1170,7 @@ export async function listCompletedTasks(processInstanceId) {
       }));
       const stored = getStoredDemoCompletedTasks(processInstanceId) || [];
       stored.forEach((st) => {
-        if (
-          !mapped.some(
-            (m) =>
-              m.id === st.id || m.taskDefinitionKey === st.taskDefinitionKey
-          )
-        ) {
+        if (!mapped.some((m) => m.id === st.id)) {
           mapped.push(st);
         }
       });

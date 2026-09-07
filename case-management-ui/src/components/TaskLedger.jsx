@@ -18,7 +18,7 @@ function taskLabel(taskDefinitionKey) {
     UserTask_LegalReview: "Legal Review",
     UserTask_BusinessApproval: "Business Approval",
     UserTask_FinanceApproval: "Finance Approval",
-    UserTask_Procurement: "Procurement",
+    UserTask_Procurement: "Procurement"
   };
   return map[taskDefinitionKey] || taskDefinitionKey;
 }
@@ -33,7 +33,6 @@ function TaskRow({ task, onComplete, onAssign, onUnassign, busy }) {
         {taskLabel(task.taskDefinitionKey)}
         {isSam && <span className="task-row__anchor-tag">permanent</span>}
       </td>
-      <td className="task-row__id">{task.id.slice(0, 8)}</td>
       <td className="task-row__assignee">
         {task.assignee ? (
           <span className="task-row__assignee-chip">
@@ -83,9 +82,19 @@ function TaskRow({ task, onComplete, onAssign, onUnassign, busy }) {
   );
 }
 
-export default function TaskLedger({ tasks, onComplete, onAssign, onUnassign, busy }) {
+export default function TaskLedger({
+  tasks,
+  onComplete,
+  onAssign,
+  onUnassign,
+  busy
+}) {
   if (tasks.length === 0) {
-    return <p className="task-ledger__empty">No open tasks. The case may have been closed.</p>;
+    return (
+      <p className="task-ledger__empty">
+        No open tasks. The case may have been closed.
+      </p>
+    );
   }
 
   return (
@@ -93,7 +102,6 @@ export default function TaskLedger({ tasks, onComplete, onAssign, onUnassign, bu
       <thead>
         <tr>
           <th>Task</th>
-          <th>ID</th>
           <th>Assignee</th>
           <th>Opened</th>
           <th></th>

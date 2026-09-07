@@ -601,19 +601,6 @@ export default function SamCaseDetail({
     auditEntries
   ]);
 
-  // Check whether an activity is currently active (in progress / awaiting completion)
-  const isTaskActive = useCallback(
-    (activityId) => {
-      if (triggeringTaskIds.includes(activityId)) return true;
-      if (activityId === "UserTask_BusinessConfirmation") {
-        if (effectiveBusinessConfirmationStatus === "PENDING_CONFIRMATION")
-          return true;
-      }
-      return tasks.some((t) => t.taskDefinitionKey === activityId);
-    },
-    [tasks, triggeringTaskIds, effectiveBusinessConfirmationStatus]
-  );
-
   // Set of completed task keys extracted from audit entries + completed state
   const completedTaskKeysFromAudit = useMemo(() => {
     const set = new Set(completedActivities);
@@ -704,17 +691,14 @@ export default function SamCaseDetail({
     [tasks, triggeringTaskIds, completedTaskKeysFromAudit, auditEntries]
   );
 
-  // Available remaining tasks count that are NOT active
-  const availableTasksCount = useMemo(() => {
-    return REMAINING_TASKS.filter((t) => !isTaskActive(t.activityId)).length;
-  }, [isTaskActive]);
+  // Available remaining tasks count
+  const availableTasksCount = REMAINING_TASKS.length;
 
   // Combined list of open and completed workflow tasks for Tasks tab
   const allWorkflowTasks = useMemo(() => {
     const list = [];
-    const openKeys = new Set();
 
-    // 1. Add all open tasks
+    // 1. Add all open tasks (all multiple triggers will appear)
     filteredTasks.forEach((t) => {
       list.push({
         id: t.id,
@@ -725,16 +709,11 @@ export default function SamCaseDetail({
         timeLabel: "Opened",
         status: "OPEN"
       });
-      openKeys.add(t.taskDefinitionKey);
     });
 
-    // 2. Add completed tasks from backend/demo history (avoid duplicates if task was re-triggered and is currently open)
-    const completedKeys = new Set();
+    // 2. Add all completed tasks from backend/demo history (multiple completed instances will all appear)
     filteredCompletedTasks.forEach((ct) => {
-      if (
-        !openKeys.has(ct.taskDefinitionKey) &&
-        !completedKeys.has(ct.taskDefinitionKey)
-      ) {
+      if (!list.some((existing) => existing.id === ct.id)) {
         list.push({
           id: ct.id,
           name: taskLabel(ct.taskDefinitionKey, ct.name),
@@ -749,15 +728,18 @@ export default function SamCaseDetail({
           timeLabel: "Completed",
           status: "COMPLETED"
         });
-        completedKeys.add(ct.taskDefinitionKey);
       }
     });
 
-    // 3. Add Business Confirmation if confirmed and not currently open
+    // 3. Add Business Confirmation if confirmed and no completed record exists in list
+    const hasBizCompleted = list.some(
+      (t) =>
+        t.taskDefinitionKey === "UserTask_BusinessConfirmation" &&
+        t.status === "COMPLETED"
+    );
     if (
       effectiveBusinessConfirmationStatus === "CONFIRMED" &&
-      !openKeys.has("UserTask_BusinessConfirmation") &&
-      !completedKeys.has("UserTask_BusinessConfirmation")
+      !hasBizCompleted
     ) {
       list.push({
         id: `biz-conf-${caseItem?.id || "done"}`,
@@ -769,12 +751,14 @@ export default function SamCaseDetail({
         timeLabel: "Completed",
         status: "COMPLETED"
       });
-      completedKeys.add("UserTask_BusinessConfirmation");
     }
 
     // 4. Any other tasks verified completed from local completions or audit trail
     completedTaskKeysFromAudit.forEach((actKey) => {
-      if (!openKeys.has(actKey) && !completedKeys.has(actKey)) {
+      const alreadyHasCompleted = list.some(
+        (t) => t.taskDefinitionKey === actKey && t.status === "COMPLETED"
+      );
+      if (!alreadyHasCompleted) {
         list.push({
           id: `comp-${actKey}-${caseItem?.id || "hist"}`,
           name: taskLabel(actKey),
@@ -784,14 +768,13 @@ export default function SamCaseDetail({
           timeLabel: "Completed",
           status: "COMPLETED"
         });
-        completedKeys.add(actKey);
       }
     });
 
     // 5. Add SAM User Task if case is completed and not already in list
     if (
       (isCompleted || caseItem?.status === "Completed") &&
-      !completedKeys.has("UserTask_Sam")
+      !list.some((t) => t.taskDefinitionKey === "UserTask_Sam")
     ) {
       list.push({
         id: `sam-task-${caseItem?.id || "done"}`,
@@ -803,7 +786,6 @@ export default function SamCaseDetail({
         timeLabel: "Completed",
         status: "COMPLETED"
       });
-      completedKeys.add("UserTask_Sam");
     }
 
     return list;
@@ -1021,15 +1003,6 @@ export default function SamCaseDetail({
       return;
     }
 
-    // STRICT RE-TRIGGER CHECK: Cannot trigger again if task is already active/incomplete
-    if (isTaskActive(activityId)) {
-      setFeedback({
-        tone: "rust",
-        message: `Cannot trigger "${taskLabel(activityId)}": This task has already been triggered and is currently in progress. It cannot be re-triggered until completed.`
-      });
-      return;
-    }
-
     const isBiz = activityId === "UserTask_BusinessConfirmation";
     const newStatus = isBiz
       ? "Send for Business Confirmation"
@@ -1131,27 +1104,11 @@ export default function SamCaseDetail({
       return;
     }
 
-    // STRICT RE-TRIGGER CHECK FOR BULK: Filter out any tasks that are already active/incomplete
-    const activeSelected = selectedTasksToTrigger.filter((id) =>
-      isTaskActive(id)
-    );
-    const eligibleToTrigger = selectedTasksToTrigger.filter(
-      (id) => !isTaskActive(id)
-    );
-
-    if (eligibleToTrigger.length === 0) {
-      const blockedList = activeSelected.map((id) => taskLabel(id)).join(", ");
-      setFeedback({
-        tone: "rust",
-        message: `Cannot trigger selected tasks: ${blockedList} ${
-          activeSelected.length > 1 ? "are" : "is"
-        } already active and in progress. Triggered tasks cannot be re-triggered until completed.`
-      });
-      setSelectedTasksToTrigger([]);
+    if (selectedTasksToTrigger.length === 0) {
       return;
     }
 
-    const toTrigger = [...eligibleToTrigger];
+    const toTrigger = [...selectedTasksToTrigger];
     setTriggeringTaskIds((prev) => [...prev, ...toTrigger]);
     setFeedback(null);
 
@@ -1281,9 +1238,8 @@ export default function SamCaseDetail({
     }
   };
 
-  // Toggle selection for bulk trigger (blocked if task is active)
+  // Toggle selection for bulk trigger
   const toggleSelectTask = (activityId) => {
-    if (isTaskActive(activityId)) return;
     setSelectedTasksToTrigger((prev) =>
       prev.includes(activityId)
         ? prev.filter((id) => id !== activityId)
@@ -1292,11 +1248,8 @@ export default function SamCaseDetail({
   };
 
   const handleSelectAllRemaining = () => {
-    // Only select remaining tasks that are NOT currently active
-    const eligible = REMAINING_TASKS.filter(
-      (t) => !isTaskActive(t.activityId)
-    ).map((t) => t.activityId);
-    setSelectedTasksToTrigger(eligible);
+    const allRemainingIds = REMAINING_TASKS.map((t) => t.activityId);
+    setSelectedTasksToTrigger(allRemainingIds);
   };
 
   const handleDeselectAllRemaining = () => {
@@ -1934,7 +1887,6 @@ export default function SamCaseDetail({
                   <thead>
                     <tr>
                       <th>Task Name</th>
-                      <th>Task ID</th>
                       <th>Status</th>
                       <th>Assignee</th>
                       <th>Timeline</th>
@@ -1959,9 +1911,6 @@ export default function SamCaseDetail({
                               aria-hidden="true"
                             />
                             <strong>{task.name}</strong>
-                          </td>
-                          <td className="sam-task-id">
-                            <code>{task.id.slice(0, 14)}</code>
                           </td>
                           <td className="sam-task-status-cell">
                             {isOpen ? (
@@ -2497,11 +2446,20 @@ export default function SamCaseDetail({
                         </button>
                         <button
                           type="button"
-                          className="sam-btn sam-btn--ghost-sm sam-btn--disabled-active"
-                          disabled
-                          title="Business Confirmation is currently in progress. It cannot be re-triggered until completed."
+                          className="sam-btn sam-btn--single-trigger sam-btn--retrigger"
+                          onClick={() =>
+                            handleTriggerTask("UserTask_BusinessConfirmation")
+                          }
+                          disabled={
+                            isCompleted ||
+                            actionLoading ||
+                            triggeringTaskIds.includes(
+                              "UserTask_BusinessConfirmation"
+                            )
+                          }
+                          title="Trigger another Business Confirmation task"
                         >
-                          🔒 In Progress (Cannot Re-trigger)
+                          + Trigger Again
                         </button>
                       </div>
                     </div>
@@ -2718,132 +2676,160 @@ export default function SamCaseDetail({
                           isActive ? "sam-task-action-card--active" : ""
                         }`}
                       >
-                        <div className="sam-task-action-card__left">
-                          <label
-                            className="sam-task-checkbox-label"
-                            title={
-                              isActive
-                                ? `"${taskItem.title}" is currently in progress and cannot be selected for re-triggering until completed.`
-                                : isRenewalNotRequired
-                                  ? "Renewal Not Required: downstream tasks cannot be triggered."
-                                  : isLocked
-                                    ? "Awaiting Business Confirmation"
-                                    : `Select "${taskItem.title}" for triggering`
-                            }
-                          >
-                            <input
-                              type="checkbox"
-                              className="sam-task-checkbox"
-                              checked={isSelected}
-                              onChange={() =>
-                                toggleSelectTask(taskItem.activityId)
-                              }
-                              disabled={isLocked || isActive}
-                              aria-label={`Select ${taskItem.title} for triggering`}
-                            />
-                            <span
-                              className="sam-task-checkbox-custom"
-                              aria-hidden="true"
-                            />
-                          </label>
+                        {(() => {
+                          const activeCount = tasks.filter(
+                            (t) => t.taskDefinitionKey === taskItem.activityId
+                          ).length;
+                          const completedCount = completedTasks.filter(
+                            (t) => t.taskDefinitionKey === taskItem.activityId
+                          ).length;
 
-                          <div className="sam-task-action-card__content">
-                            <div className="sam-task-action-card__headline">
-                              <span className="sam-task-index">{idx + 2}.</span>
-                              <h5 className="sam-task-action-card__name">
-                                {taskItem.title}
-                              </h5>
-                              <span className="sam-dept-badge sam-dept-badge--sm">
-                                {taskItem.department}
-                              </span>
-                              {isActive && (
-                                <>
-                                  <span className="sam-task-live-badge sam-task-live-badge--active">
-                                    ● In Progress
-                                  </span>
-                                  <span className="sam-task-live-badge sam-task-live-badge--lock-warn">
-                                    🔒 Re-trigger locked until completed
-                                  </span>
-                                </>
-                              )}
-                              {!isActive && isTaskDone && (
-                                <span className="sam-task-live-badge sam-task-live-badge--completed">
-                                  ✓ Completed
-                                </span>
-                              )}
-                            </div>
-
-                            <p className="sam-task-action-card__desc">
-                              {taskItem.description}
-                            </p>
-
-                            {statusInfo.task && (
-                              <div className="sam-task-action-card__meta">
-                                <span>
-                                  <strong>Task ID:</strong>{" "}
-                                  <code>{statusInfo.task.id.slice(0, 12)}</code>
-                                </span>
-                                <span>
-                                  <strong>Assignee:</strong>{" "}
-                                  {statusInfo.task.assignee || "Unassigned"}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="sam-task-link-btn"
-                                  onClick={() => setActiveTab("tasks")}
-                                  title="View and manage this task in the Task tab"
+                          return (
+                            <>
+                              <div className="sam-task-action-card__left">
+                                <label
+                                  className="sam-task-checkbox-label"
+                                  title={
+                                    isRenewalNotRequired
+                                      ? "Renewal Not Required: downstream tasks cannot be triggered."
+                                      : isLocked
+                                        ? "Awaiting Business Confirmation"
+                                        : `Select "${taskItem.title}" for triggering`
+                                  }
                                 >
-                                  View in Task Tab →
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                                  <input
+                                    type="checkbox"
+                                    className="sam-task-checkbox"
+                                    checked={isSelected}
+                                    onChange={() =>
+                                      toggleSelectTask(taskItem.activityId)
+                                    }
+                                    disabled={isLocked}
+                                    aria-label={`Select ${taskItem.title} for triggering`}
+                                  />
+                                  <span
+                                    className="sam-task-checkbox-custom"
+                                    aria-hidden="true"
+                                  />
+                                </label>
 
-                        <div className="sam-task-action-card__right">
-                          {isActive ? (
-                            <div className="sam-task-card-active-actions">
-                              <button
-                                type="button"
-                                className="sam-btn sam-btn--confirm-team"
-                                onClick={() =>
-                                  handleCompleteTeamTask(
-                                    statusInfo.task?.id,
-                                    taskItem.activityId,
-                                    taskItem.title
-                                  )
-                                }
-                                disabled={isCompleted || actionLoading}
-                                title={`Mark response received from ${taskItem.department} for "${taskItem.title}"`}
-                              >
-                                ✓ Mark Response Received
-                              </button>
-                              <span className="sam-task-status-tag--in-progress">
-                                {isTriggering ? "Triggering…" : "● In Progress"}
-                              </span>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className={`sam-btn sam-btn--single-trigger ${
-                                isTaskDone ? "sam-btn--retrigger" : ""
-                              }`}
-                              onClick={() =>
-                                handleTriggerTask(taskItem.activityId)
-                              }
-                              disabled={isLocked || isTriggering}
-                              title={
-                                isRenewalNotRequired
-                                  ? "Renewal Not Required: downstream tasks cannot be triggered."
-                                  : isTaskDone
-                                    ? `"${taskItem.title}" was completed. Click to trigger again.`
-                                    : `Trigger ${taskItem.title} individually`
-                              }
-                            >
-                              {isTaskDone ? "⚡ Trigger Again" : "Trigger Task"}
-                            </button>
-                          )}
-                        </div>
+                                <div className="sam-task-action-card__content">
+                                  <div className="sam-task-action-card__headline">
+                                    <span className="sam-task-index">
+                                      {idx + 2}.
+                                    </span>
+                                    <h5 className="sam-task-action-card__name">
+                                      {taskItem.title}
+                                    </h5>
+                                    <span className="sam-dept-badge sam-dept-badge--sm">
+                                      {taskItem.department}
+                                    </span>
+                                    {activeCount > 0 && (
+                                      <span className="sam-task-live-badge sam-task-live-badge--active">
+                                        ●{" "}
+                                        {activeCount > 1
+                                          ? `${activeCount} In Progress`
+                                          : "In Progress"}
+                                      </span>
+                                    )}
+                                    {completedCount > 0 && (
+                                      <span className="sam-task-live-badge sam-task-live-badge--completed">
+                                        ✓{" "}
+                                        {completedCount > 1
+                                          ? `${completedCount} Completed`
+                                          : "Completed"}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <p className="sam-task-action-card__desc">
+                                    {taskItem.description}
+                                  </p>
+
+                                  {statusInfo.task && (
+                                    <div className="sam-task-action-card__meta">
+                                      <span>
+                                        <strong>Assignee:</strong>{" "}
+                                        {statusInfo.task.assignee ||
+                                          "Unassigned"}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="sam-task-link-btn"
+                                        onClick={() => setActiveTab("tasks")}
+                                        title="View and manage this task in the Task tab"
+                                      >
+                                        View in Task Tab →
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="sam-task-action-card__right">
+                                {isActive ? (
+                                  <div className="sam-task-card-active-actions">
+                                    <button
+                                      type="button"
+                                      className="sam-btn sam-btn--confirm-team"
+                                      onClick={() =>
+                                        handleCompleteTeamTask(
+                                          statusInfo.task?.id,
+                                          taskItem.activityId,
+                                          taskItem.title
+                                        )
+                                      }
+                                      disabled={isCompleted || actionLoading}
+                                      title={`Mark response received from ${taskItem.department} for "${taskItem.title}"`}
+                                    >
+                                      ✓ Mark Response Received
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="sam-btn sam-btn--single-trigger sam-btn--retrigger"
+                                      onClick={() =>
+                                        handleTriggerTask(taskItem.activityId)
+                                      }
+                                      disabled={isLocked || isTriggering}
+                                      title={`Trigger another instance of ${taskItem.title}`}
+                                    >
+                                      + Trigger Again
+                                    </button>
+                                    <span className="sam-task-status-tag--in-progress">
+                                      {isTriggering
+                                        ? "Triggering…"
+                                        : "● In Progress"}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={`sam-btn sam-btn--single-trigger ${
+                                      completedCount > 0 || isTaskDone
+                                        ? "sam-btn--retrigger"
+                                        : ""
+                                    }`}
+                                    onClick={() =>
+                                      handleTriggerTask(taskItem.activityId)
+                                    }
+                                    disabled={isLocked || isTriggering}
+                                    title={
+                                      isRenewalNotRequired
+                                        ? "Renewal Not Required: downstream tasks cannot be triggered."
+                                        : completedCount > 0 || isTaskDone
+                                          ? `"${taskItem.title}" was completed. Click to trigger again.`
+                                          : `Trigger ${taskItem.title} individually`
+                                    }
+                                  >
+                                    {completedCount > 0 || isTaskDone
+                                      ? "⚡ Trigger Again"
+                                      : "Trigger Task"}
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </article>
                     );
                   })}
