@@ -173,7 +173,35 @@ export default function Login() {
                 className="login__quick-btn"
                 onClick={() => handleQuickFill("biz.confirm@example.com")}
               >
-                biz.confirm@example.com (GROUP_BUSINESS_CONFIRMATION)
+                biz.confirm@example.com (Business Confirmation)
+              </button>
+              <button
+                type="button"
+                className="login__quick-btn"
+                onClick={() => handleQuickFill("legal.review@example.com")}
+              >
+                legal.review@example.com (Legal Review)
+              </button>
+              <button
+                type="button"
+                className="login__quick-btn"
+                onClick={() => handleQuickFill("biz.approval@example.com")}
+              >
+                biz.approval@example.com (Business Approval)
+              </button>
+              <button
+                type="button"
+                className="login__quick-btn"
+                onClick={() => handleQuickFill("finance.approval@example.com")}
+              >
+                finance.approval@example.com (Finance Approval)
+              </button>
+              <button
+                type="button"
+                className="login__quick-btn"
+                onClick={() => handleQuickFill("procurement@example.com")}
+              >
+                procurement@example.com (Procurement Team)
               </button>
             </div>
           </div>

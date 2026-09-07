@@ -90,6 +90,7 @@ const REMAINING_TASKS = [
     activityId: "UserTask_LegalReview",
     title: "Legal Review",
     department: "Legal & Regulatory Compliance",
+    candidateGroup: "GROUP_LEGAL_REVIEW",
     description:
       "Review case for statutory liabilities, regulatory exposure, and contractual compliance."
   },
@@ -97,6 +98,7 @@ const REMAINING_TASKS = [
     activityId: "UserTask_BusinessApproval",
     title: "Business Approval",
     department: "Business Operations",
+    candidateGroup: "GROUP_BUSINESS_APPROVAL",
     description:
       "Commercial leadership approval, portfolio signoff, and operational validation."
   },
@@ -104,6 +106,7 @@ const REMAINING_TASKS = [
     activityId: "UserTask_FinanceApproval",
     title: "Finance Approval",
     department: "Finance & Risk Management",
+    candidateGroup: "GROUP_FINANCE_APPROVAL",
     description:
       "Financial exposure audit, credit assessment, and budgetary release signoff."
   },
@@ -111,6 +114,7 @@ const REMAINING_TASKS = [
     activityId: "UserTask_Procurement",
     title: "Procurement",
     department: "Procurement & Sourcing",
+    candidateGroup: "GROUP_PROCUREMENT",
     description:
       "Vendor onboarding clearance, sourcing terms, and procurement validation."
   }
@@ -581,13 +585,20 @@ export default function SamCaseDetail({
     if (isRenewalNotRequired) return false;
     if (businessConfirmationResponse === "RENEWAL_REQUIRED") return true;
     if (completedBizTask?.decision === "RENEWAL_REQUIRED") return true;
-    if (effectiveBusinessConfirmationStatus === "CONFIRMED") return true;
+    const foundAudit = auditEntries.some(
+      (e) =>
+        (e.action === "BUSINESS_CONFIRMATION_COMPLETED" ||
+          (e.details || "").toLowerCase().includes("business confirmation")) &&
+        (e.details || "").toLowerCase().includes("renewal required") &&
+        !(e.details || "").toLowerCase().includes("not required")
+    );
+    if (foundAudit) return true;
     return false;
   }, [
     isRenewalNotRequired,
     businessConfirmationResponse,
     completedBizTask,
-    effectiveBusinessConfirmationStatus
+    auditEntries
   ]);
 
   // Check whether an activity is currently active (in progress / awaiting completion)
@@ -900,13 +911,22 @@ export default function SamCaseDetail({
     const newStatus = "Business Confirmation Response Received";
 
     setBusinessConfirmationStatus("CONFIRMED");
+    setBusinessConfirmationResponse("RENEWAL_REQUIRED");
     api.setStoredActionsData?.(caseKey, {
-      businessConfirmationStatus: "CONFIRMED"
+      businessConfirmationStatus: "CONFIRMED",
+      businessConfirmationResponse: "RENEWAL_REQUIRED",
+      renewalProcessDecision: "RENEWAL_REQUIRED",
+      renewalRequired: true,
+      businessConfirmationCompletedBy: "Business Confirmation Specialist",
+      businessConfirmationCompletedAt: new Date().toISOString()
     });
     if (processInstanceId) {
       api
         .setProcessVariables(processInstanceId, {
           businessConfirmationStatus: "CONFIRMED",
+          businessConfirmationResponse: "RENEWAL_REQUIRED",
+          renewalProcessDecision: "RENEWAL_REQUIRED",
+          renewalRequired: true,
           caseStatus: newStatus,
           status: newStatus
         })
@@ -991,15 +1011,12 @@ export default function SamCaseDetail({
       return;
     }
 
-    // Renewal Not Required check: Cannot trigger any other tasks if renewal is not required
-    if (
-      activityId !== "UserTask_BusinessConfirmation" &&
-      isRenewalNotRequired
-    ) {
+    // Renewal Required check: Downstream tasks can only be triggered if Business Confirmation response is Renewal Required
+    if (activityId !== "UserTask_BusinessConfirmation" && !isRenewalRequired) {
       setFeedback({
         tone: "rust",
         message:
-          "Cannot trigger tasks: Business Confirmation determined that Renewal is Not Required. Downstream review tasks are blocked."
+          "Cannot trigger tasks: Legal Review, Business Approval, Finance Approval, and Procurement user tasks can only be triggered if the Business Confirmation team member's response is Renewal Required."
       });
       return;
     }
@@ -1021,10 +1038,12 @@ export default function SamCaseDetail({
     setTriggeringTaskIds((prev) => [...prev, activityId]);
     setFeedback(null);
     try {
+      const taskMeta = REMAINING_TASKS.find((t) => t.activityId === activityId);
       await api.triggerActivity(processInstanceId, activityId, {
         caseId,
         caseNumber,
         status: newStatus,
+        candidateGroup: taskMeta?.candidateGroup,
         userName:
           `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim() ||
           currentUser?.email,
@@ -1094,11 +1113,11 @@ export default function SamCaseDetail({
     }
     if (selectedTasksToTrigger.length === 0) return;
 
-    if (isRenewalNotRequired) {
+    if (!isRenewalRequired) {
       setFeedback({
         tone: "rust",
         message:
-          "Cannot trigger tasks: Business Confirmation determined that Renewal is Not Required. Downstream review tasks are blocked."
+          "Cannot trigger tasks: Legal Review, Business Approval, Finance Approval, and Procurement user tasks can only be triggered if the Business Confirmation team member's response is Renewal Required."
       });
       setSelectedTasksToTrigger([]);
       return;
@@ -1145,11 +1164,13 @@ export default function SamCaseDetail({
         ? "Send for Business Confirmation"
         : "Send for Team";
 
+      const taskMeta = REMAINING_TASKS.find((t) => t.activityId === actId);
       try {
         await api.triggerActivity(processInstanceId, actId, {
           caseId,
           caseNumber,
           status: statusForTask,
+          candidateGroup: taskMeta?.candidateGroup,
           userName:
             `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim() ||
             currentUser?.email,
@@ -2547,10 +2568,7 @@ export default function SamCaseDetail({
               {/* STEP 2: REMAINING TASKS (DISCRETIONARY: SINGLE OR MULTIPLE) */}
               <div
                 className={`sam-stage-box sam-stage-box--stage2 ${
-                  effectiveBusinessConfirmationStatus !== "CONFIRMED" ||
-                  isRenewalNotRequired
-                    ? "sam-stage-box--locked"
-                    : ""
+                  !isRenewalRequired ? "sam-stage-box--locked" : ""
                 }`}
               >
                 <div className="sam-stage-header">
@@ -2565,19 +2583,18 @@ export default function SamCaseDetail({
                   </div>
 
                   <div className="sam-stage-header__right">
-                    {effectiveBusinessConfirmationStatus === "CONFIRMED" ? (
-                      isRenewalNotRequired ? (
-                        <span className="sam-status-pill-lg sam-status-pill-lg--locked-warn">
-                          🛑 Blocked — Renewal Not Required
-                        </span>
-                      ) : (
-                        <span className="sam-status-pill-lg sam-status-pill-lg--unlocked">
-                          🔓 Unlocked — SAM User Decision
-                        </span>
-                      )
+                    {isRenewalRequired ? (
+                      <span className="sam-status-pill-lg sam-status-pill-lg--unlocked">
+                        🔓 Unlocked — SAM User Decision
+                      </span>
+                    ) : isRenewalNotRequired ? (
+                      <span className="sam-status-pill-lg sam-status-pill-lg--locked-warn">
+                        🛑 Blocked — Renewal Not Required
+                      </span>
                     ) : (
                       <span className="sam-status-pill-lg sam-status-pill-lg--locked">
-                        🔒 Locked — Awaiting Business Confirmation
+                        🔒 Locked — Awaiting Business Confirmation (Renewal
+                        Required)
                       </span>
                     )}
                   </div>
@@ -2613,67 +2630,66 @@ export default function SamCaseDetail({
                   </div>
                 ) : (
                   <p className="sam-stage-desc">
-                    {effectiveBusinessConfirmationStatus === "CONFIRMED"
+                    {isRenewalRequired
                       ? "Choose single tasks to trigger individually, or select multiple tasks via the checkboxes to trigger all selected tasks at once. Any task that is triggered and in progress cannot be re-triggered until completed."
-                      : "These tasks are locked. You must first trigger Business Confirmation (Step 1) and receive confirmation before any of these tasks can be dispatched."}
+                      : "These tasks are locked. Legal Review, Business Approval, Finance Approval, and Procurement user tasks can be triggered only if the Business Confirmation team member's response is Renewal Required."}
                   </p>
                 )}
 
                 {/* Bulk Trigger Toolbar */}
-                {effectiveBusinessConfirmationStatus === "CONFIRMED" &&
-                  !isRenewalNotRequired && (
-                    <div className="sam-bulk-toolbar">
-                      <div className="sam-bulk-toolbar__left">
-                        <span className="sam-bulk-count">
-                          <strong>{selectedTasksToTrigger.length}</strong> of{" "}
-                          {availableTasksCount} available tasks selected
-                        </span>
-                        <button
-                          type="button"
-                          className="sam-btn-link"
-                          onClick={handleSelectAllRemaining}
-                          disabled={isCompleted || availableTasksCount === 0}
-                          title={
-                            availableTasksCount === 0
-                              ? "All remaining tasks are currently active and in progress"
-                              : "Select all remaining available tasks"
-                          }
-                        >
-                          Select All Available
-                        </button>
-                        <span className="sam-toolbar-divider">|</span>
-                        <button
-                          type="button"
-                          className="sam-btn-link"
-                          onClick={handleDeselectAllRemaining}
-                          disabled={
-                            isCompleted || selectedTasksToTrigger.length === 0
-                          }
-                        >
-                          Deselect All
-                        </button>
-                      </div>
-
-                      <div className="sam-bulk-toolbar__right">
-                        <button
-                          type="button"
-                          className="sam-btn sam-btn--bulk-trigger"
-                          onClick={handleTriggerBulk}
-                          disabled={
-                            isCompleted ||
-                            selectedTasksToTrigger.length === 0 ||
-                            triggeringTaskIds.length > 0 ||
-                            actionLoading
-                          }
-                        >
-                          {triggeringTaskIds.length > 0 &&
-                          selectedTasksToTrigger.length > 0
-                            ? "Triggering Selected Tasks…"
-                            : `⚡ Trigger Selected Tasks (${selectedTasksToTrigger.length})`}
-                        </button>
-                      </div>
+                {isRenewalRequired && (
+                  <div className="sam-bulk-toolbar">
+                    <div className="sam-bulk-toolbar__left">
+                      <span className="sam-bulk-count">
+                        <strong>{selectedTasksToTrigger.length}</strong> of{" "}
+                        {availableTasksCount} available tasks selected
+                      </span>
+                      <button
+                        type="button"
+                        className="sam-btn-link"
+                        onClick={handleSelectAllRemaining}
+                        disabled={isCompleted || availableTasksCount === 0}
+                        title={
+                          availableTasksCount === 0
+                            ? "All remaining tasks are currently active and in progress"
+                            : "Select all remaining available tasks"
+                        }
+                      >
+                        Select All Available
+                      </button>
+                      <span className="sam-toolbar-divider">|</span>
+                      <button
+                        type="button"
+                        className="sam-btn-link"
+                        onClick={handleDeselectAllRemaining}
+                        disabled={
+                          isCompleted || selectedTasksToTrigger.length === 0
+                        }
+                      >
+                        Deselect All
+                      </button>
                     </div>
-                  )}
+
+                    <div className="sam-bulk-toolbar__right">
+                      <button
+                        type="button"
+                        className="sam-btn sam-btn--bulk-trigger"
+                        onClick={handleTriggerBulk}
+                        disabled={
+                          isCompleted ||
+                          selectedTasksToTrigger.length === 0 ||
+                          triggeringTaskIds.length > 0 ||
+                          actionLoading
+                        }
+                      >
+                        {triggeringTaskIds.length > 0 &&
+                        selectedTasksToTrigger.length > 0
+                          ? "Triggering Selected Tasks…"
+                          : `⚡ Trigger Selected Tasks (${selectedTasksToTrigger.length})`}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Remaining Tasks List */}
                 <div className="sam-task-cards-list">

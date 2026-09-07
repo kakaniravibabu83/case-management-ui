@@ -9,6 +9,8 @@ import Login from "./components/Login";
 import NewCaseForm from "./components/NewCaseForm";
 import Notice from "./components/Notice";
 import SamCaseDetail from "./components/SamCaseDetail";
+import TeamReviewDocket from "./components/TeamReviewDocket";
+import TeamReviewTaskDetail from "./components/TeamReviewTaskDetail";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
 function AuthenticatedWorkspace() {
@@ -25,6 +27,46 @@ function AuthenticatedWorkspace() {
     (group?.name || "").toUpperCase().includes("CONFIRM") ||
     (role?.name || "").toUpperCase().includes("CONFIRM");
 
+  const isLegalReviewGroup =
+    group?.name === "GROUP_LEGAL_REVIEW" ||
+    (group?.name || "").toUpperCase().includes("LEGAL") ||
+    (role?.name || "").toUpperCase().includes("LEGAL");
+
+  const isBizApprovalGroup =
+    group?.name === "GROUP_BUSINESS_APPROVAL" ||
+    (group?.name || "").toUpperCase().includes("BUSINESS_APPROVAL") ||
+    (group?.name || "").toUpperCase().includes("BIZ_APP") ||
+    (role?.name || "").toUpperCase().includes("BUSINESS_APPROVAL");
+
+  const isFinanceApprovalGroup =
+    group?.name === "GROUP_FINANCE_APPROVAL" ||
+    (group?.name || "").toUpperCase().includes("FINANCE") ||
+    (role?.name || "").toUpperCase().includes("FINANCE");
+
+  const isProcurementGroup =
+    group?.name === "GROUP_PROCUREMENT" ||
+    (group?.name || "").toUpperCase().includes("PROCURE") ||
+    (role?.name || "").toUpperCase().includes("PROCURE");
+
+  const isTeamReviewGroup =
+    isLegalReviewGroup ||
+    isBizApprovalGroup ||
+    isFinanceApprovalGroup ||
+    isProcurementGroup;
+
+  const teamConfig = api.getTeamConfig(group?.name || role?.name);
+  const teamTitle =
+    teamConfig?.teamName ||
+    (isLegalReviewGroup
+      ? "Legal Review"
+      : isBizApprovalGroup
+        ? "Business Approval"
+        : isFinanceApprovalGroup
+          ? "Finance Approval"
+          : isProcurementGroup
+            ? "Procurement"
+            : "Review Tasks");
+
   const [cases, setCases] = useState([]);
   const [selectedCaseIdentifier, setSelectedCaseIdentifier] = useState(null);
   const [loadingCases, setLoadingCases] = useState(false);
@@ -33,6 +75,11 @@ function AuthenticatedWorkspace() {
   const [bizTasks, setBizTasks] = useState([]);
   const [selectedBizTaskId, setSelectedBizTaskId] = useState(null);
   const [loadingBizTasks, setLoadingBizTasks] = useState(false);
+
+  // Team Review tasks state (Legal, Business Approval, Finance, Procurement)
+  const [teamTasks, setTeamTasks] = useState([]);
+  const [selectedTeamTaskId, setSelectedTeamTaskId] = useState(null);
+  const [loadingTeamTasks, setLoadingTeamTasks] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [activeView, setActiveView] = useState(
@@ -236,6 +283,133 @@ function AuthenticatedWorkspace() {
       showNotice({
         tone: "rust",
         message: err.message || "Failed to complete task."
+      });
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Fetch Team Review tasks on mount and refresh for Legal Review, Business Approval, Finance Approval, Procurement members
+  const loadTeamTasks = useCallback(async () => {
+    if (!isTeamReviewGroup) return;
+    setLoadingTeamTasks(true);
+    try {
+      const fetched = await api.getTeamTasks({
+        groupName: group?.name,
+        userEmail: user?.email
+      });
+      setTeamTasks(fetched);
+      if (fetched.length > 0) {
+        setSelectedTeamTaskId((prev) => {
+          if (prev && fetched.some((t) => String(t.id) === String(prev))) {
+            return prev;
+          }
+          return fetched[0].id;
+        });
+      }
+    } catch (err) {
+      console.error(`Failed loading ${teamTitle} tasks:`, err);
+    } finally {
+      setLoadingTeamTasks(false);
+    }
+  }, [isTeamReviewGroup, group, user, teamTitle]);
+
+  useEffect(() => {
+    if (isTeamReviewGroup) {
+      loadTeamTasks();
+    }
+  }, [isTeamReviewGroup, loadTeamTasks]);
+
+  // Claim Team Review Task
+  const handleClaimTeamTask = async (task) => {
+    setActionLoading(true);
+    try {
+      await api.claimTeamTask({
+        taskId: task.id,
+        userEmail: user?.email,
+        userName:
+          `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+          user?.email,
+        caseIdentifier: task.caseNumber,
+        caseId: task.caseId,
+        processInstanceId: task.processInstanceId,
+        teamGroupName: group?.name,
+        taskName: task.name || teamTitle
+      });
+
+      setTeamTasks((prev) =>
+        prev.map((t) => {
+          if (t.id === task.id) {
+            return { ...t, assignee: user?.email };
+          }
+          return t;
+        })
+      );
+
+      showNotice({
+        tone: "seal",
+        message: `${task.name || teamTitle} task for ${task.caseNumber} claimed successfully. You may now review and submit your decision.`
+      });
+    } catch (err) {
+      showNotice({
+        tone: "rust",
+        message: err.message || "Failed to claim task."
+      });
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Complete Team Review Task
+  const handleCompleteTeamTask = async (task, { decision, comments }) => {
+    setActionLoading(true);
+    try {
+      await api.completeTeamTask({
+        taskId: task.id,
+        processInstanceId: task.processInstanceId,
+        caseId: task.caseId,
+        caseNumber: task.caseNumber,
+        caseItem: {
+          id: task.caseId,
+          caseNumber: task.caseNumber,
+          title: task.caseTitle,
+          description: task.caseDescription,
+          camundaProcessInstanceId: task.processInstanceId
+        },
+        user,
+        teamGroupName: group?.name,
+        taskDefinitionKey: task.taskDefinitionKey,
+        taskTitle: task.name || teamTitle,
+        decision,
+        comments
+      });
+
+      setTeamTasks((prev) =>
+        prev.map((t) => {
+          if (t.id === task.id) {
+            return {
+              ...t,
+              status: "COMPLETED",
+              decision,
+              comments
+            };
+          }
+          return t;
+        })
+      );
+
+      showNotice({
+        tone: "seal",
+        message: `${task.name || teamTitle} review for ${task.caseNumber} completed successfully. Decision: ${decision}.`
+      });
+
+      await loadTeamTasks();
+    } catch (err) {
+      showNotice({
+        tone: "rust",
+        message: err.message || "Failed to complete review task."
       });
       throw err;
     } finally {
@@ -462,6 +636,12 @@ function AuthenticatedWorkspace() {
     bizTasks[0] ||
     null;
 
+  // Find currently selected Team Review task (Legal, Business Approval, Finance, Procurement)
+  const selectedTeamTask =
+    teamTasks.find((t) => String(t.id) === String(selectedTeamTaskId)) ||
+    teamTasks[0] ||
+    null;
+
   return (
     <div className="workspace-layout">
       <Header />
@@ -476,6 +656,17 @@ function AuthenticatedWorkspace() {
             groupName={group?.name || "GROUP_BUSINESS_CONFIRMATION"}
             loading={loadingBizTasks}
             onRefresh={loadBizTasks}
+          />
+        ) : isTeamReviewGroup ? (
+          <TeamReviewDocket
+            tasks={teamTasks}
+            selectedTaskId={selectedTeamTaskId}
+            onSelectTask={(task) => setSelectedTeamTaskId(task.id)}
+            currentUser={user}
+            groupName={group?.name || "GROUP_REVIEW"}
+            teamTitle={teamTitle}
+            loading={loadingTeamTasks}
+            onRefresh={loadTeamTasks}
           />
         ) : (
           <Docket
@@ -509,6 +700,23 @@ function AuthenticatedWorkspace() {
                 currentUser={user}
                 onClaimTask={handleClaimBizTask}
                 onCompleteTask={handleCompleteBizTask}
+                actionLoading={actionLoading}
+              />
+            )
+          ) : isTeamReviewGroup ? (
+            loadingTeamTasks && teamTasks.length === 0 ? (
+              <div className="sam-loading">
+                <span className="login__spinner" aria-hidden="true" />
+                <span>Loading {teamTitle.toLowerCase()}…</span>
+              </div>
+            ) : (
+              <TeamReviewTaskDetail
+                task={selectedTeamTask}
+                currentUser={user}
+                groupName={group?.name || "GROUP_REVIEW"}
+                teamTitle={teamTitle}
+                onClaimTask={handleClaimTeamTask}
+                onCompleteTask={handleCompleteTeamTask}
                 actionLoading={actionLoading}
               />
             )

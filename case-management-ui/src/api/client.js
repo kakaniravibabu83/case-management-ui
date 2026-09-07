@@ -118,6 +118,106 @@ export const DEMO_GROUPS = [
         email: "carol.biz@example.com"
       }
     ]
+  },
+  {
+    id: 4,
+    name: "GROUP_LEGAL_REVIEW",
+    description: "Legal & Regulatory Compliance Team",
+    role: {
+      id: 4,
+      name: "ROLE_LEGAL_REVIEW",
+      description:
+        "Legal Review member conducts regulatory, contractual, and compliance review."
+    },
+    members: [
+      {
+        id: 8,
+        firstName: "Sarah",
+        lastName: "Jenkins",
+        email: "legal.review@example.com"
+      },
+      {
+        id: 9,
+        firstName: "David",
+        lastName: "Stone",
+        email: "david.legal@example.com"
+      }
+    ]
+  },
+  {
+    id: 5,
+    name: "GROUP_BUSINESS_APPROVAL",
+    description: "Business Operations & Signoff Team",
+    role: {
+      id: 5,
+      name: "ROLE_BUSINESS_APPROVAL",
+      description:
+        "Business Approval member validates commercial viability and grants operational approval."
+    },
+    members: [
+      {
+        id: 10,
+        firstName: "Robert",
+        lastName: "Vance",
+        email: "biz.approval@example.com"
+      },
+      {
+        id: 11,
+        firstName: "Amanda",
+        lastName: "Clarke",
+        email: "amanda.biz@example.com"
+      }
+    ]
+  },
+  {
+    id: 6,
+    name: "GROUP_FINANCE_APPROVAL",
+    description: "Finance & Risk Management Team",
+    role: {
+      id: 6,
+      name: "ROLE_FINANCE_APPROVAL",
+      description:
+        "Finance Approval member assesses financial exposure, credit, and budgetary signoff."
+    },
+    members: [
+      {
+        id: 12,
+        firstName: "Fiona",
+        lastName: "Gallagher",
+        email: "finance.approval@example.com"
+      },
+      {
+        id: 13,
+        firstName: "Marcus",
+        lastName: "Cole",
+        email: "marcus.finance@example.com"
+      }
+    ]
+  },
+  {
+    id: 7,
+    name: "GROUP_PROCUREMENT",
+    description: "Procurement & Sourcing Team",
+    role: {
+      id: 7,
+      name: "ROLE_PROCUREMENT",
+      description:
+        "Procurement member reviews vendor contracts, sourcing terms, and onboarding clearance."
+    },
+    members: [
+      {
+        id: 14,
+        firstName: "Peter",
+        lastName: "Sterling",
+        email: "procurement@example.com"
+      },
+      {
+        id: 15,
+        firstName: "Rachel",
+        lastName: "Adams",
+        email: "rachel.procure@example.com"
+      }
+    ]
   }
 ];
 
@@ -350,21 +450,45 @@ export function getStoredActionsData(caseIdentifier) {
       return {
         samNotes:
           "Urgent title deed verification required. Please review commercial grounds and determine whether renewal process is required for this facility.",
-        businessConfirmationStatus: "PENDING_CONFIRMATION"
+        businessConfirmationStatus: "CONFIRMED",
+        businessConfirmationResponse: "RENEWAL_REQUIRED",
+        renewalProcessDecision: "RENEWAL_REQUIRED",
+        renewalRequired: true,
+        businessConfirmationNotes:
+          "Title deeds and collateral registration verified with registry. Commercial grounds confirmed. Renewal process is confirmed as required.",
+        businessConfirmationCompletedBy: "David Miller",
+        businessConfirmationCompletedByEmail: "biz.confirm@example.com",
+        businessConfirmationCompletedAt: "2026-09-05T16:20:00Z"
       };
     }
     if (key === "CASE-2026-1001" || key === "101" || key === "demo-pi-1001") {
       return {
         samNotes:
           "Customer defaulted on Q3 payment cycle. Please evaluate whether renewal process is required before triggering any downstream operational tasks.",
-        businessConfirmationStatus: "PENDING_CONFIRMATION"
+        businessConfirmationStatus: "CONFIRMED",
+        businessConfirmationResponse: "RENEWAL_REQUIRED",
+        renewalProcessDecision: "RENEWAL_REQUIRED",
+        renewalRequired: true,
+        businessConfirmationNotes:
+          "Evaluated default profile and customer restructuring plan. Validated eligibility. Renewal process is required.",
+        businessConfirmationCompletedBy: "Carol Danvers",
+        businessConfirmationCompletedByEmail: "carol.biz@example.com",
+        businessConfirmationCompletedAt: "2026-09-05T15:45:00Z"
       };
     }
     if (key === "CASE-2026-1004" || key === "104" || key === "demo-pi-1004") {
       return {
         samNotes:
           "Escrow release terms under review. Confirm renewal requirements with the business stakeholder.",
-        businessConfirmationStatus: "PENDING_CONFIRMATION"
+        businessConfirmationStatus: "CONFIRMED",
+        businessConfirmationResponse: "RENEWAL_REQUIRED",
+        renewalProcessDecision: "RENEWAL_REQUIRED",
+        renewalRequired: true,
+        businessConfirmationNotes:
+          "Confirmed escrow terms with commercial account executive. Renewal workflow required for documentary clearance.",
+        businessConfirmationCompletedBy: "David Miller",
+        businessConfirmationCompletedByEmail: "biz.confirm@example.com",
+        businessConfirmationCompletedAt: "2026-09-05T17:10:00Z"
       };
     }
     return null;
@@ -382,6 +506,70 @@ export function setStoredActionsData(caseIdentifier, data) {
     sessionStorage.setItem(DEMO_ACTIONS_STORAGE_KEY, JSON.stringify(map));
   } catch (e) {
     console.warn("Failed saving demo actions data", e);
+  }
+}
+
+// In-memory / session storage for other team responses (Legal, Business Approval, Finance, Procurement)
+const DEMO_TEAM_RESPONSES_STORAGE_KEY = "casework_demo_team_responses";
+export function getStoredTeamResponses(caseIdentifier) {
+  if (!caseIdentifier) return {};
+  try {
+    const raw = sessionStorage.getItem(DEMO_TEAM_RESPONSES_STORAGE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    const key = String(caseIdentifier);
+    if (map[key]) return map[key];
+
+    // Seed default cross-team responses for realistic multi-team review visibility
+    if (key === "CASE-2026-1002" || key === "102" || key === "demo-pi-1002") {
+      return {
+        finance: {
+          teamKey: "finance",
+          teamName: "Finance Approval",
+          groupName: "GROUP_FINANCE_APPROVAL",
+          decision: "Approved",
+          comments:
+            "Credit risk exposure assessed against facility covenants. Sufficient collateral buffer identified. Approved from financial risk standpoint.",
+          respondent: "Fiona Gallagher",
+          respondentEmail: "finance.approval@example.com",
+          completedAt: "2026-09-06T11:30:00Z"
+        }
+      };
+    }
+    if (key === "CASE-2026-1001" || key === "101" || key === "demo-pi-1001") {
+      return {
+        procurement: {
+          teamKey: "procurement",
+          teamName: "Procurement",
+          groupName: "GROUP_PROCUREMENT",
+          decision: "Approved",
+          comments:
+            "Vendor onboarding clearance and sourcing compliance verified against the master vendor schedule. No impediments identified.",
+          respondent: "Peter Sterling",
+          respondentEmail: "procurement@example.com",
+          completedAt: "2026-09-06T09:15:00Z"
+        }
+      };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export function setStoredTeamResponse(caseIdentifier, teamKey, responseData) {
+  if (!caseIdentifier || !teamKey) return;
+  try {
+    const raw = sessionStorage.getItem(DEMO_TEAM_RESPONSES_STORAGE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    const strKey = String(caseIdentifier);
+    if (!map[strKey]) map[strKey] = {};
+    map[strKey][teamKey] = responseData;
+    sessionStorage.setItem(
+      DEMO_TEAM_RESPONSES_STORAGE_KEY,
+      JSON.stringify(map)
+    );
+  } catch (e) {
+    console.warn("Failed saving demo team response", e);
   }
 }
 
@@ -410,9 +598,45 @@ export const DEMO_TASKS_BY_PI = {
       name: "Business Confirmation",
       taskDefinitionKey: "UserTask_BusinessConfirmation",
       processInstanceId: "demo-pi-1001",
-      assignee: null,
+      assignee: "carol.biz@example.com",
       candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
       createTime: new Date(Date.now() - 900000).toISOString()
+    },
+    {
+      id: "task-1001-legal",
+      name: "Legal Review",
+      taskDefinitionKey: "UserTask_LegalReview",
+      processInstanceId: "demo-pi-1001",
+      assignee: null,
+      candidateGroup: "GROUP_LEGAL_REVIEW",
+      createTime: new Date(Date.now() - 800000).toISOString()
+    },
+    {
+      id: "task-1001-bizapp",
+      name: "Business Approval",
+      taskDefinitionKey: "UserTask_BusinessApproval",
+      processInstanceId: "demo-pi-1001",
+      assignee: null,
+      candidateGroup: "GROUP_BUSINESS_APPROVAL",
+      createTime: new Date(Date.now() - 750000).toISOString()
+    },
+    {
+      id: "task-1001-finance",
+      name: "Finance Approval",
+      taskDefinitionKey: "UserTask_FinanceApproval",
+      processInstanceId: "demo-pi-1001",
+      assignee: null,
+      candidateGroup: "GROUP_FINANCE_APPROVAL",
+      createTime: new Date(Date.now() - 700000).toISOString()
+    },
+    {
+      id: "task-1001-proc",
+      name: "Procurement",
+      taskDefinitionKey: "UserTask_Procurement",
+      processInstanceId: "demo-pi-1001",
+      assignee: "procurement@example.com",
+      candidateGroup: "GROUP_PROCUREMENT",
+      createTime: new Date(Date.now() - 650000).toISOString()
     }
   ],
   "demo-pi-1002": [
@@ -439,14 +663,42 @@ export const DEMO_TASKS_BY_PI = {
       taskDefinitionKey: "UserTask_LegalReview",
       processInstanceId: "demo-pi-1002",
       assignee: null,
+      candidateGroup: "GROUP_LEGAL_REVIEW",
       createTime: new Date(Date.now() - 1800000).toISOString()
+    },
+    {
+      id: "task-1002-bizapp",
+      name: "Business Approval",
+      taskDefinitionKey: "UserTask_BusinessApproval",
+      processInstanceId: "demo-pi-1002",
+      assignee: "biz.approval@example.com",
+      candidateGroup: "GROUP_BUSINESS_APPROVAL",
+      createTime: new Date(Date.now() - 1500000).toISOString()
+    },
+    {
+      id: "task-1002-finance",
+      name: "Finance Approval",
+      taskDefinitionKey: "UserTask_FinanceApproval",
+      processInstanceId: "demo-pi-1002",
+      assignee: null,
+      candidateGroup: "GROUP_FINANCE_APPROVAL",
+      createTime: new Date(Date.now() - 1200000).toISOString()
+    },
+    {
+      id: "task-1002-proc",
+      name: "Procurement",
+      taskDefinitionKey: "UserTask_Procurement",
+      processInstanceId: "demo-pi-1002",
+      assignee: null,
+      candidateGroup: "GROUP_PROCUREMENT",
+      createTime: new Date(Date.now() - 1000000).toISOString()
     },
     {
       id: "task-1002-biz",
       name: "Business Confirmation",
       taskDefinitionKey: "UserTask_BusinessConfirmation",
       processInstanceId: "demo-pi-1002",
-      assignee: null,
+      assignee: "biz.confirm@example.com",
       candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
       createTime: new Date(Date.now() - 900000).toISOString()
     }
@@ -487,6 +739,33 @@ export const DEMO_TASKS_BY_PI = {
       assignee: "biz.confirm@example.com",
       candidateGroup: "GROUP_BUSINESS_CONFIRMATION",
       createTime: new Date(Date.now() - 600000).toISOString()
+    },
+    {
+      id: "task-1004-legal",
+      name: "Legal Review",
+      taskDefinitionKey: "UserTask_LegalReview",
+      processInstanceId: "demo-pi-1004",
+      assignee: "legal.review@example.com",
+      candidateGroup: "GROUP_LEGAL_REVIEW",
+      createTime: new Date(Date.now() - 500000).toISOString()
+    },
+    {
+      id: "task-1004-bizapp",
+      name: "Business Approval",
+      taskDefinitionKey: "UserTask_BusinessApproval",
+      processInstanceId: "demo-pi-1004",
+      assignee: null,
+      candidateGroup: "GROUP_BUSINESS_APPROVAL",
+      createTime: new Date(Date.now() - 400000).toISOString()
+    },
+    {
+      id: "task-1004-proc",
+      name: "Procurement",
+      taskDefinitionKey: "UserTask_Procurement",
+      processInstanceId: "demo-pi-1004",
+      assignee: null,
+      candidateGroup: "GROUP_PROCUREMENT",
+      createTime: new Date(Date.now() - 300000).toISOString()
     }
   ],
   "demo-pi-1005": [
@@ -496,6 +775,7 @@ export const DEMO_TASKS_BY_PI = {
       taskDefinitionKey: "UserTask_LegalReview",
       processInstanceId: "demo-pi-1005",
       assignee: "sam@example.com",
+      candidateGroup: "GROUP_LEGAL_REVIEW",
       createTime: "2026-09-04T09:00:00Z"
     },
     {
@@ -668,7 +948,7 @@ function findUserInGroups(groups, normalizedEmail) {
     return null;
   }
 
-  // Prioritize GROUP_BK, GROUP_BUSINESS_CONFIRMATION, or GROUP_SAM_TEAM if the user belongs to multiple groups
+  // Prioritize groups if user belongs to multiple
   const primaryGroup =
     matchingGroups.find((g) => g.name === "GROUP_BK") ||
     matchingGroups.find(
@@ -677,6 +957,10 @@ function findUserInGroups(groups, normalizedEmail) {
         g.name === "GROUP_BIZ_CONFIRMATION" ||
         (g.name || "").toUpperCase().includes("CONFIRM")
     ) ||
+    matchingGroups.find((g) => g.name === "GROUP_LEGAL_REVIEW") ||
+    matchingGroups.find((g) => g.name === "GROUP_BUSINESS_APPROVAL") ||
+    matchingGroups.find((g) => g.name === "GROUP_FINANCE_APPROVAL") ||
+    matchingGroups.find((g) => g.name === "GROUP_PROCUREMENT") ||
     matchingGroups.find(
       (g) => g.name === "GROUP_SAM_TEAM" || g.name === "GROUP_SAM"
     ) ||
@@ -1028,6 +1312,15 @@ const TASK_NAME_MAP = {
   UserTask_Sam: "SAM Investigation Review"
 };
 
+export const TASK_GROUP_MAP = {
+  UserTask_BusinessConfirmation: "GROUP_BUSINESS_CONFIRMATION",
+  UserTask_LegalReview: "GROUP_LEGAL_REVIEW",
+  UserTask_BusinessApproval: "GROUP_BUSINESS_APPROVAL",
+  UserTask_FinanceApproval: "GROUP_FINANCE_APPROVAL",
+  UserTask_Procurement: "GROUP_PROCUREMENT",
+  UserTask_Sam: "GROUP_SAM_TEAM"
+};
+
 /** Triggers a named task on demand (activityId is the BPMN element id, e.g. "UserTask_LegalReview"). */
 export async function triggerActivity(
   processInstanceId,
@@ -1069,12 +1362,15 @@ export async function triggerActivity(
     // Add to demo tasks
     const currentTasks = getDemoTasks(processInstanceId);
     const taskName = TASK_NAME_MAP[activityId] || activityId;
+    const candidateGroup =
+      options.candidateGroup || TASK_GROUP_MAP[activityId] || null;
     const newTask = {
       id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       name: taskName,
       taskDefinitionKey: activityId,
       processInstanceId,
       assignee: options.assignee || null,
+      candidateGroup,
       createTime: new Date().toISOString()
     };
     setStoredDemoTasks(processInstanceId, [newTask, ...currentTasks]);
@@ -1875,6 +2171,469 @@ export async function completeBusinessConfirmationTask({
     success: true,
     taskId,
     decision: decisionCode,
+    status: newStatus
+  };
+}
+
+/** Configuration metadata for the 4 review and approval teams */
+export const TEAM_GROUPS_CONFIG = {
+  GROUP_LEGAL_REVIEW: {
+    teamKey: "legal",
+    teamName: "Legal Review",
+    taskDefinitionKey: "UserTask_LegalReview",
+    groupName: "GROUP_LEGAL_REVIEW",
+    roleName: "ROLE_LEGAL_REVIEW",
+    actionComplete: "LEGAL_REVIEW_COMPLETED",
+    taskTitle: "Legal Review"
+  },
+  GROUP_BUSINESS_APPROVAL: {
+    teamKey: "bizApproval",
+    teamName: "Business Approval",
+    taskDefinitionKey: "UserTask_BusinessApproval",
+    groupName: "GROUP_BUSINESS_APPROVAL",
+    roleName: "ROLE_BUSINESS_APPROVAL",
+    actionComplete: "BUSINESS_APPROVAL_COMPLETED",
+    taskTitle: "Business Approval"
+  },
+  GROUP_FINANCE_APPROVAL: {
+    teamKey: "finance",
+    teamName: "Finance Approval",
+    taskDefinitionKey: "UserTask_FinanceApproval",
+    groupName: "GROUP_FINANCE_APPROVAL",
+    roleName: "ROLE_FINANCE_APPROVAL",
+    actionComplete: "FINANCE_APPROVAL_COMPLETED",
+    taskTitle: "Finance Approval"
+  },
+  GROUP_PROCUREMENT: {
+    teamKey: "procurement",
+    teamName: "Procurement",
+    taskDefinitionKey: "UserTask_Procurement",
+    groupName: "GROUP_PROCUREMENT",
+    roleName: "ROLE_PROCUREMENT",
+    actionComplete: "PROCUREMENT_COMPLETED",
+    taskTitle: "Procurement"
+  }
+};
+
+/**
+ * Finds the team configuration matching a group name, role name, or task definition key.
+ */
+export function getTeamConfig(identifier) {
+  if (!identifier) return null;
+  const upper = String(identifier).toUpperCase();
+  for (const config of Object.values(TEAM_GROUPS_CONFIG)) {
+    if (
+      config.groupName.toUpperCase() === upper ||
+      config.roleName.toUpperCase() === upper ||
+      config.taskDefinitionKey.toUpperCase() === upper ||
+      config.teamKey.toUpperCase() === upper ||
+      config.teamName.toUpperCase() === upper
+    ) {
+      return config;
+    }
+  }
+  // Loose match
+  if (upper.includes("LEGAL")) return TEAM_GROUPS_CONFIG.GROUP_LEGAL_REVIEW;
+  if (upper.includes("BUSINESS_APP") || upper.includes("BIZ_APP"))
+    return TEAM_GROUPS_CONFIG.GROUP_BUSINESS_APPROVAL;
+  if (upper.includes("FINANCE"))
+    return TEAM_GROUPS_CONFIG.GROUP_FINANCE_APPROVAL;
+  if (upper.includes("PROCURE")) return TEAM_GROUPS_CONFIG.GROUP_PROCUREMENT;
+  return null;
+}
+
+/**
+ * Fetches user tasks across all cases for a specific review/approval team.
+ * Enriches tasks with case details, SAM notes to Business Confirmation,
+ * Business Confirmation response comments, and all other team members' responses.
+ */
+export async function getTeamTasks({
+  groupName,
+  userEmail: _userEmail,
+  includeCompleted = true
+} = {}) {
+  const teamConfig = getTeamConfig(groupName);
+  const targetTaskDef = teamConfig?.taskDefinitionKey;
+  const targetGroup = teamConfig?.groupName;
+  const targetTeamKey = teamConfig?.teamKey;
+
+  const cases = await getCases();
+  const completedPis = new Set(getStoredCompletedProcesses());
+  const allTeamTasks = [];
+  const seenTaskIds = new Set();
+
+  for (const c of cases) {
+    const piId = c.camundaProcessInstanceId;
+    if (!piId) continue;
+
+    const caseKey = c.caseNumber || c.id || piId;
+    const actionsData = getStoredActionsData(caseKey) || {};
+    const teamResponses = getStoredTeamResponses(caseKey) || {};
+    const isProcCompleted = completedPis.has(piId);
+
+    // Business Confirmation response object for cross-team read-only display
+    const businessConfirmation = {
+      decision:
+        actionsData.businessConfirmationResponse ||
+        actionsData.renewalProcessDecision ||
+        (actionsData.renewalRequired !== undefined
+          ? actionsData.renewalRequired
+            ? "RENEWAL_REQUIRED"
+            : "RENEWAL_NOT_REQUIRED"
+          : null),
+      decisionLabel:
+        actionsData.businessConfirmationResponse === "RENEWAL_REQUIRED" ||
+        actionsData.renewalRequired
+          ? "Renewal Required"
+          : actionsData.businessConfirmationResponse === "RENEWAL_NOT_REQUIRED"
+            ? "Renewal Not Required"
+            : "Pending / Completed",
+      comments: actionsData.businessConfirmationNotes || "",
+      completedBy:
+        actionsData.businessConfirmationCompletedBy ||
+        actionsData.businessConfirmationCompletedByEmail ||
+        "Business Confirmation Specialist",
+      completedAt: actionsData.businessConfirmationCompletedAt || ""
+    };
+
+    // Construct other team members' responses in read-only format
+    const otherTeamResponses = [];
+    for (const [key, resp] of Object.entries(teamResponses)) {
+      if (key !== targetTeamKey && resp && resp.decision) {
+        otherTeamResponses.push(resp);
+      }
+    }
+
+    // Task filter check
+    const matchesTargetTeam = (t) => {
+      if (targetTaskDef && t.taskDefinitionKey === targetTaskDef) return true;
+      if (targetGroup && t.candidateGroup === targetGroup) return true;
+      if (
+        targetGroup &&
+        Array.isArray(t.candidateGroups) &&
+        t.candidateGroups.includes(targetGroup)
+      )
+        return true;
+      const tName = (t.name || "").toLowerCase();
+      if (
+        teamConfig?.teamName &&
+        tName.includes(teamConfig.teamName.toLowerCase())
+      )
+        return true;
+      return false;
+    };
+
+    // 1. Fetch open tasks
+    if (!isProcCompleted) {
+      const openTasks = await listTasks(piId);
+      const matchedOpen = openTasks.filter(matchesTargetTeam);
+
+      matchedOpen.forEach((t) => {
+        if (!seenTaskIds.has(t.id)) {
+          seenTaskIds.add(t.id);
+          allTeamTasks.push({
+            ...t,
+            name: teamConfig?.taskTitle || t.name,
+            taskDefinitionKey:
+              teamConfig?.taskDefinitionKey || t.taskDefinitionKey,
+            candidateGroup: teamConfig?.groupName || t.candidateGroup,
+            teamKey: targetTeamKey,
+            caseId: c.id,
+            caseNumber: c.caseNumber || `Case #${c.id}`,
+            caseTitle: c.title || `${teamConfig?.teamName || "Review"} Task`,
+            caseDescription: c.description || "",
+            caseStatus: c.status || "Open",
+            caseOwner: c.caseOwner || null,
+            caseCreatedAt: c.createdAt || t.createTime,
+            samNotes: actionsData.samNotes || "",
+            businessConfirmation,
+            otherTeamResponses,
+            status: "OPEN"
+          });
+        }
+      });
+    }
+
+    // 2. Fetch completed tasks if requested
+    if (includeCompleted) {
+      const completedTasks = await listCompletedTasks(piId);
+      const matchedCompleted = completedTasks.filter(matchesTargetTeam);
+
+      matchedCompleted.forEach((t) => {
+        if (!seenTaskIds.has(t.id)) {
+          seenTaskIds.add(t.id);
+          const selfResponse = teamResponses[targetTeamKey] || {};
+          allTeamTasks.push({
+            ...t,
+            name: teamConfig?.taskTitle || t.name,
+            taskDefinitionKey:
+              teamConfig?.taskDefinitionKey || t.taskDefinitionKey,
+            candidateGroup: teamConfig?.groupName || t.candidateGroup,
+            teamKey: targetTeamKey,
+            caseId: c.id,
+            caseNumber: c.caseNumber || `Case #${c.id}`,
+            caseTitle: c.title || `${teamConfig?.teamName || "Review"} Task`,
+            caseDescription: c.description || "",
+            caseStatus: c.status || "Completed",
+            caseOwner: c.caseOwner || null,
+            caseCreatedAt: c.createdAt || t.createTime,
+            samNotes: actionsData.samNotes || "",
+            businessConfirmation,
+            otherTeamResponses,
+            status: "COMPLETED",
+            decision: t.decision || selfResponse.decision || null,
+            comments: t.comments || selfResponse.comments || "",
+            completedAt: t.endTime || selfResponse.completedAt || ""
+          });
+        }
+      });
+    }
+  }
+
+  // Sort: open tasks first, then newest first
+  allTeamTasks.sort((a, b) => {
+    if (a.status !== b.status) {
+      return a.status === "OPEN" ? -1 : 1;
+    }
+    const timeA = new Date(a.createTime || a.caseCreatedAt || 0).getTime();
+    const timeB = new Date(b.createTime || b.caseCreatedAt || 0).getTime();
+    return timeB - timeA;
+  });
+
+  return allTeamTasks;
+}
+
+/**
+ * Claims an unassigned task for a review/approval team member.
+ */
+export async function claimTeamTask({
+  taskId,
+  userEmail,
+  userName,
+  caseIdentifier,
+  caseId,
+  processInstanceId,
+  teamGroupName,
+  taskName
+}) {
+  if (!taskId) throw new Error("Task ID is required.");
+  const email = (userEmail || "").trim();
+  const teamConfig = getTeamConfig(teamGroupName);
+  const displayName = userName || email;
+  const effectiveTaskName = taskName || teamConfig?.teamName || "Review Task";
+
+  // 1. Backend assignment attempt
+  try {
+    await assignTask(taskId, email);
+  } catch (err) {
+    console.warn(`Could not assign task ${taskId} on backend:`, err);
+  }
+
+  // 2. Update session storage demo tasks
+  try {
+    const raw = sessionStorage.getItem(DEMO_TASKS_STORAGE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    let foundTask = false;
+    for (const pi of Object.keys(map)) {
+      if (Array.isArray(map[pi])) {
+        map[pi] = map[pi].map((t) => {
+          if (t.id === taskId) {
+            foundTask = true;
+            return { ...t, assignee: email };
+          }
+          return t;
+        });
+      }
+    }
+    if (!foundTask) {
+      for (const [pi, defaultTasks] of Object.entries(DEMO_TASKS_BY_PI)) {
+        if (!map[pi]) map[pi] = [...defaultTasks];
+        map[pi] = map[pi].map((t) => {
+          if (t.id === taskId) {
+            return { ...t, assignee: email };
+          }
+          return t;
+        });
+      }
+    }
+    sessionStorage.setItem(DEMO_TASKS_STORAGE_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.warn("Failed updating demo task assignee in session:", e);
+  }
+
+  // 3. Record audit trail entry
+  const caseKey = caseIdentifier || caseId;
+  if (caseKey) {
+    const auditEntry = {
+      id: Date.now(),
+      caseId: caseId ? Number(caseId) || caseId : null,
+      caseNumber: caseIdentifier || null,
+      action: "TASK_CLAIMED",
+      status: "In-Progress",
+      details: `${effectiveTaskName} task claimed by ${displayName} (${email}) for ${
+        teamConfig?.groupName || teamGroupName || "Team"
+      }.`,
+      createdBy: displayName,
+      createdAt: new Date().toISOString(),
+      camundaProcessInstanceId: processInstanceId || null
+    };
+    appendDemoAudit(caseKey, auditEntry);
+    if (caseId && String(caseId) !== String(caseKey)) {
+      appendDemoAudit(caseId, auditEntry);
+    }
+  }
+
+  return { success: true, taskId, assignee: email };
+}
+
+/**
+ * Completes a review/approval user task:
+ * 1. Completes Camunda user task (e.g. UserTask_LegalReview)
+ * 2. Saves process variables (decision, review comments, team group)
+ * 3. Updates session store cross-team responses
+ * 4. Logs audit entry with decision (Approved / Reject / Send Back) and comments
+ * 5. Updates case status to "Team response Received"
+ */
+export async function completeTeamTask({
+  taskId,
+  processInstanceId,
+  caseId,
+  caseNumber,
+  caseItem,
+  user,
+  teamGroupName,
+  taskDefinitionKey,
+  taskTitle,
+  decision, // "Approved" | "Reject" | "Send Back"
+  comments = ""
+}) {
+  const caseKey = caseNumber || caseId;
+  const teamConfig = getTeamConfig(teamGroupName || taskDefinitionKey);
+  const teamKey = teamConfig?.teamKey || "teamReview";
+  const teamTitle = taskTitle || teamConfig?.teamName || "Review Task";
+  const groupName = teamConfig?.groupName || teamGroupName || "GROUP_REVIEW";
+
+  const userDisplay =
+    user?.firstName && user?.lastName
+      ? `${user.firstName} ${user.lastName}`.trim()
+      : user?.email || "Team Specialist";
+  const userEmail = user?.email || "specialist@example.com";
+
+  // Normalize decision codes and labels
+  let decisionCode = "APPROVED";
+  let decisionLabel = "Approved";
+  const dUpper = String(decision || "").toUpperCase();
+  if (dUpper.includes("REJECT")) {
+    decisionCode = "REJECTED";
+    decisionLabel = "Reject";
+  } else if (dUpper.includes("SEND") || dUpper.includes("BACK")) {
+    decisionCode = "SENT_BACK";
+    decisionLabel = "Send Back";
+  } else {
+    decisionCode = "APPROVED";
+    decisionLabel = "Approved";
+  }
+
+  const newStatus = "Team response Received";
+  const auditAction = teamConfig?.actionComplete || "TEAM_RESPONSE_RECEIVED";
+
+  // 1. Complete Camunda task
+  if (taskId) {
+    try {
+      await completeTask(taskId, {
+        [`${teamKey}Decision`]: { value: decisionCode, type: "String" },
+        [`${teamKey}DecisionLabel`]: { value: decisionLabel, type: "String" },
+        [`${teamKey}Comments`]: { value: comments.trim(), type: "String" },
+        [`${teamKey}CompletedBy`]: { value: userDisplay, type: "String" },
+        [`${teamKey}CompletedByEmail`]: { value: userEmail, type: "String" },
+        [`${teamKey}CompletedAt`]: {
+          value: new Date().toISOString(),
+          type: "String"
+        }
+      });
+    } catch (err) {
+      console.warn(`Could not complete task ${taskId} via API:`, err);
+    }
+  }
+
+  // 2. Set Process Variables in Camunda
+  if (processInstanceId) {
+    try {
+      await setProcessVariables(processInstanceId, {
+        [`${teamKey}Decision`]: decisionCode,
+        [`${teamKey}DecisionLabel`]: decisionLabel,
+        [`${teamKey}Comments`]: comments.trim(),
+        [`${teamKey}CompletedBy`]: userDisplay,
+        [`${teamKey}CompletedByEmail`]: userEmail,
+        [`${teamKey}CompletedAt`]: new Date().toISOString(),
+        caseStatus: newStatus,
+        status: newStatus
+      });
+    } catch (e) {
+      console.warn("Could not set process variables on completion:", e);
+    }
+  }
+
+  // 3. Update Stored Cross-Team Responses in session store
+  if (caseKey) {
+    const responsePayload = {
+      teamKey,
+      teamName: teamTitle,
+      groupName,
+      decision: decisionLabel,
+      decisionCode,
+      comments: comments.trim(),
+      respondent: userDisplay,
+      respondentEmail: userEmail,
+      completedAt: new Date().toISOString()
+    };
+    setStoredTeamResponse(caseKey, teamKey, responsePayload);
+    if (caseId && String(caseId) !== String(caseKey)) {
+      setStoredTeamResponse(caseId, teamKey, responsePayload);
+    }
+  }
+
+  // 4. Update Case Status in DB and session overrides with Audit Entry
+  await updateCaseStatus(
+    caseId,
+    newStatus,
+    caseItem || {
+      id: caseId,
+      caseNumber,
+      camundaProcessInstanceId: processInstanceId
+    },
+    {
+      userName: userDisplay,
+      userEmail,
+      recordAudit: true,
+      auditAction,
+      auditDetails: `${teamTitle} review completed by ${userDisplay} (${userEmail}) for ${groupName}. Decision: ${decisionLabel}.${
+        comments.trim() ? ` Remarks: "${comments.trim()}"` : ""
+      }`
+    }
+  );
+
+  // 5. Ensure completed demo task is moved to completed tasks
+  if (processInstanceId && taskId) {
+    appendStoredDemoCompletedTask(processInstanceId, {
+      id: taskId,
+      name: teamTitle,
+      taskDefinitionKey:
+        taskDefinitionKey || teamConfig?.taskDefinitionKey || "UserTask_Review",
+      processInstanceId,
+      assignee: userEmail,
+      endTime: new Date().toISOString(),
+      status: "COMPLETED",
+      decision: decisionLabel,
+      comments: comments.trim()
+    });
+  }
+
+  return {
+    success: true,
+    taskId,
+    decision: decisionLabel,
+    decisionCode,
     status: newStatus
   };
 }
